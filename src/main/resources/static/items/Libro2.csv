@@ -1,0 +1,407 @@
+id;name;type;name2;val;stat;type3
+600;Sealed Avadon Boots;Armor;icon;icon.armor_t66_b_i02;;
+600;Sealed Avadon Boots;Armor;default_action;EQUIP;;
+600;Sealed Avadon Boots;Armor;bodypart;feet;;
+600;Sealed Avadon Boots;Armor;immediate_effect;true;;
+600;Sealed Avadon Boots;Armor;crystal_count;69;;
+600;Sealed Avadon Boots;Armor;crystal_type;B;;
+600;Sealed Avadon Boots;Armor;material;DAMASCUS;;
+600;Sealed Avadon Boots;Armor;weight;1170;;
+600;Sealed Avadon Boots;Armor;price;519000;;
+600;Sealed Avadon Boots;Armor;enchant_enabled;true;;
+600;Sealed Avadon Boots;Armor;isAppearanceable;true;;
+600;Sealed Avadon Boots;Armor;commissionItemType;FEET;;
+600;Sealed Avadon Boots;Armor;;;41;pDef
+601;Sealed Doom Boots;Armor;icon;icon.armor_t71_b_i02;;
+601;Sealed Doom Boots;Armor;default_action;EQUIP;;
+601;Sealed Doom Boots;Armor;bodypart;feet;;
+601;Sealed Doom Boots;Armor;immediate_effect;true;;
+601;Sealed Doom Boots;Armor;crystal_count;107;;
+601;Sealed Doom Boots;Armor;crystal_type;B;;
+601;Sealed Doom Boots;Armor;material;MITHRIL;;
+601;Sealed Doom Boots;Armor;weight;1130;;
+601;Sealed Doom Boots;Armor;price;804000;;
+601;Sealed Doom Boots;Armor;enchant_enabled;true;;
+601;Sealed Doom Boots;Armor;isAppearanceable;true;;
+601;Sealed Doom Boots;Armor;commissionItemType;FEET;;
+601;Sealed Doom Boots;Armor;;;44;pDef
+603;Divine Boots;Armor;icon;icon.armor_t67_b_i00;;
+603;Divine Boots;Armor;default_action;EQUIP;;
+603;Divine Boots;Armor;bodypart;feet;;
+603;Divine Boots;Armor;immediate_effect;true;;
+603;Divine Boots;Armor;crystal_count;143;;
+603;Divine Boots;Armor;crystal_type;C;;
+603;Divine Boots;Armor;material;ADAMANTAITE;;
+603;Divine Boots;Armor;weight;1200;;
+603;Divine Boots;Armor;price;358000;;
+603;Divine Boots;Armor;commissionItemType;FEET;;
+603;Divine Boots;Armor;isAppearanceable;true;;
+603;Divine Boots;Armor;enchant_enabled;true;;
+603;Divine Boots;Armor;;;39;pDef
+604;Quality Leather Gloves;Armor;icon;icon.armor_t09_g_i00;;
+604;Quality Leather Gloves;Armor;default_action;EQUIP;;
+604;Quality Leather Gloves;Armor;bodypart;gloves;;
+604;Quality Leather Gloves;Armor;immediate_effect;true;;
+604;Quality Leather Gloves;Armor;crystal_count;38;;
+604;Quality Leather Gloves;Armor;crystal_type;D;;
+604;Quality Leather Gloves;Armor;material;LEATHER;;
+604;Quality Leather Gloves;Armor;weight;650;;
+604;Quality Leather Gloves;Armor;price;20900;;
+604;Quality Leather Gloves;Armor;commissionItemType;GLOVES;;
+604;Quality Leather Gloves;Armor;isAppearanceable;true;;
+604;Quality Leather Gloves;Armor;enchant_enabled;true;;
+604;Quality Leather Gloves;Armor;;;19;pDef
+605;Leather Gauntlets;Armor;icon;icon.armor_t18_g_i00;;
+605;Leather Gauntlets;Armor;default_action;EQUIP;;
+605;Leather Gauntlets;Armor;bodypart;gloves;;
+605;Leather Gauntlets;Armor;immediate_effect;true;;
+605;Leather Gauntlets;Armor;crystal_count;60;;
+605;Leather Gauntlets;Armor;crystal_type;D;;
+605;Leather Gauntlets;Armor;material;LEATHER;;
+605;Leather Gauntlets;Armor;weight;640;;
+605;Leather Gauntlets;Armor;price;33300;;
+605;Leather Gauntlets;Armor;commissionItemType;GLOVES;;
+605;Leather Gauntlets;Armor;isAppearanceable;true;;
+605;Leather Gauntlets;Armor;enchant_enabled;true;;
+605;Leather Gauntlets;Armor;;;22;pDef
+606;Rip Gauntlets;Armor;icon;icon.armor_t40_g_i00;;
+606;Rip Gauntlets;Armor;default_action;EQUIP;;
+606;Rip Gauntlets;Armor;bodypart;gloves;;
+606;Rip Gauntlets;Armor;immediate_effect;true;;
+606;Rip Gauntlets;Armor;crystal_count;135;;
+606;Rip Gauntlets;Armor;crystal_type;D;;
+606;Rip Gauntlets;Armor;material;LEATHER;;
+606;Rip Gauntlets;Armor;weight;630;;
+606;Rip Gauntlets;Armor;price;74700;;
+606;Rip Gauntlets;Armor;commissionItemType;GLOVES;;
+606;Rip Gauntlets;Armor;isAppearanceable;true;;
+606;Rip Gauntlets;Armor;enchant_enabled;true;;
+606;Rip Gauntlets;Armor;;;27;pDef
+607;Ogre Power Gauntlets;Armor;icon;icon.armor_t45_g_i00;;
+607;Ogre Power Gauntlets;Armor;default_action;EQUIP;;
+607;Ogre Power Gauntlets;Armor;bodypart;gloves;;
+607;Ogre Power Gauntlets;Armor;immediate_effect;true;;
+607;Ogre Power Gauntlets;Armor;crystal_count;177;;
+607;Ogre Power Gauntlets;Armor;crystal_type;D;;
+607;Ogre Power Gauntlets;Armor;material;FINE_STEEL;;
+607;Ogre Power Gauntlets;Armor;weight;620;;
+607;Ogre Power Gauntlets;Armor;price;97800;;
+607;Ogre Power Gauntlets;Armor;enchant_enabled;true;;
+607;Ogre Power Gauntlets;Armor;isAppearanceable;true;;
+607;Ogre Power Gauntlets;Armor;commissionItemType;GLOVES;;
+607;Ogre Power Gauntlets;Armor;;;29;pDef
+608;Mithril Gauntlets;Armor;icon;icon.armor_t61_g_i00;;
+608;Mithril Gauntlets;Armor;default_action;EQUIP;;
+608;Mithril Gauntlets;Armor;bodypart;gloves;;
+608;Mithril Gauntlets;Armor;immediate_effect;true;;
+608;Mithril Gauntlets;Armor;crystal_count;98;;
+608;Mithril Gauntlets;Armor;crystal_type;C;;
+608;Mithril Gauntlets;Armor;material;MITHRIL;;
+608;Mithril Gauntlets;Armor;weight;600;;
+608;Mithril Gauntlets;Armor;price;245000;;
+608;Mithril Gauntlets;Armor;enchant_enabled;true;;
+608;Mithril Gauntlets;Armor;isAppearanceable;true;;
+608;Mithril Gauntlets;Armor;commissionItemType;GLOVES;;
+608;Mithril Gauntlets;Armor;;;36;pDef
+609;Gauntlets of Ghost;Armor;icon;icon.armor_gauntlet_i00;;
+609;Gauntlets of Ghost;Armor;default_action;EQUIP;;
+609;Gauntlets of Ghost;Armor;bodypart;gloves;;
+609;Gauntlets of Ghost;Armor;immediate_effect;true;;
+609;Gauntlets of Ghost;Armor;crystal_count;143;;
+609;Gauntlets of Ghost;Armor;crystal_type;C;;
+609;Gauntlets of Ghost;Armor;material;BLOOD_STEEL;;
+609;Gauntlets of Ghost;Armor;weight;1920;;
+609;Gauntlets of Ghost;Armor;price;275100;;
+609;Gauntlets of Ghost;Armor;commissionItemType;GLOVES;;
+609;Gauntlets of Ghost;Armor;isAppearanceable;true;;
+609;Gauntlets of Ghost;Armor;enchant_enabled;true;;
+609;Gauntlets of Ghost;Armor;;;39;pDef
+612;Sealed Zubei's Gauntlets;Armor;icon;icon.armor_t64_g_i02;;
+612;Sealed Zubei's Gauntlets;Armor;default_action;EQUIP;;
+612;Sealed Zubei's Gauntlets;Armor;bodypart;gloves;;
+612;Sealed Zubei's Gauntlets;Armor;immediate_effect;true;;
+612;Sealed Zubei's Gauntlets;Armor;crystal_count;69;;
+612;Sealed Zubei's Gauntlets;Armor;crystal_type;B;;
+612;Sealed Zubei's Gauntlets;Armor;material;MITHRIL;;
+612;Sealed Zubei's Gauntlets;Armor;weight;590;;
+612;Sealed Zubei's Gauntlets;Armor;price;519000;;
+612;Sealed Zubei's Gauntlets;Armor;commissionItemType;GLOVES;;
+612;Sealed Zubei's Gauntlets;Armor;isAppearanceable;true;;
+612;Sealed Zubei's Gauntlets;Armor;enchant_enabled;true;;
+612;Sealed Zubei's Gauntlets;Armor;;;41;pDef
+625;Bone Shield;Armor;icon;icon.shield_bone_shield_i00;;
+625;Bone Shield;Armor;default_action;EQUIP;;
+625;Bone Shield;Armor;bodypart;lhand;;
+625;Bone Shield;Armor;immediate_effect;true;;
+625;Bone Shield;Armor;material;BONE;;
+625;Bone Shield;Armor;weight;1380;;
+625;Bone Shield;Armor;commissionItemType;SHIELD;;
+625;Bone Shield;Armor;isAppearanceable;true;;
+625;Bone Shield;Armor;price;12900;;
+625;Bone Shield;Armor;;;-8;rEvas
+625;Bone Shield;Armor;;;20;rShld
+625;Bone Shield;Armor;;;90;sDef
+626;Bronze Shield;Armor;icon;icon.shield_bronze_shield_i00;;
+626;Bronze Shield;Armor;default_action;EQUIP;;
+626;Bronze Shield;Armor;bodypart;lhand;;
+626;Bronze Shield;Armor;immediate_effect;true;;
+626;Bronze Shield;Armor;crystal_count;39;;
+626;Bronze Shield;Armor;crystal_type;D;;
+626;Bronze Shield;Armor;material;BRONZE;;
+626;Bronze Shield;Armor;weight;1370;;
+626;Bronze Shield;Armor;price;21900;;
+626;Bronze Shield;Armor;commissionItemType;SHIELD;;
+626;Bronze Shield;Armor;isAppearanceable;true;;
+626;Bronze Shield;Armor;enchant_enabled;true;;
+626;Bronze Shield;Armor;;;-8;rEvas
+626;Bronze Shield;Armor;;;20;rShld
+626;Bronze Shield;Armor;;;101;sDef
+627;Aspis;Armor;icon;icon.shield_aspis_i00;;
+627;Aspis;Armor;default_action;EQUIP;;
+627;Aspis;Armor;bodypart;lhand;;
+627;Aspis;Armor;immediate_effect;true;;
+627;Aspis;Armor;crystal_count;63;;
+627;Aspis;Armor;crystal_type;D;;
+627;Aspis;Armor;material;STEEL;;
+627;Aspis;Armor;weight;1350;;
+627;Aspis;Armor;price;35000;;
+627;Aspis;Armor;commissionItemType;SHIELD;;
+627;Aspis;Armor;isAppearanceable;true;;
+627;Aspis;Armor;enchant_enabled;true;;
+627;Aspis;Armor;;;-8;rEvas
+627;Aspis;Armor;;;20;rShld
+627;Aspis;Armor;;;114;sDef
+628;Hoplon;Armor;icon;icon.shield_hoplon_i00;;
+628;Hoplon;Armor;default_action;EQUIP;;
+628;Hoplon;Armor;bodypart;lhand;;
+628;Hoplon;Armor;immediate_effect;true;;
+628;Hoplon;Armor;crystal_count;96;;
+628;Hoplon;Armor;crystal_type;D;;
+628;Hoplon;Armor;material;FINE_STEEL;;
+628;Hoplon;Armor;weight;1340;;
+628;Hoplon;Armor;price;53300;;
+628;Hoplon;Armor;commissionItemType;SHIELD;;
+628;Hoplon;Armor;isAppearanceable;true;;
+628;Hoplon;Armor;enchant_enabled;true;;
+628;Hoplon;Armor;;;-8;rEvas
+628;Hoplon;Armor;;;20;rShld
+628;Hoplon;Armor;;;128;sDef
+629;Kite Shield;Armor;icon;icon.shield_kite_shield_i00;;
+629;Kite Shield;Armor;default_action;EQUIP;;
+629;Kite Shield;Armor;bodypart;lhand;;
+629;Kite Shield;Armor;immediate_effect;true;;
+629;Kite Shield;Armor;crystal_count;142;;
+629;Kite Shield;Armor;crystal_type;D;;
+629;Kite Shield;Armor;material;FINE_STEEL;;
+629;Kite Shield;Armor;weight;1320;;
+629;Kite Shield;Armor;price;78400;;
+629;Kite Shield;Armor;enchant_enabled;true;;
+629;Kite Shield;Armor;isAppearanceable;true;;
+629;Kite Shield;Armor;commissionItemType;SHIELD;;
+629;Kite Shield;Armor;;;-8;rEvas
+629;Kite Shield;Armor;;;20;rShld
+629;Kite Shield;Armor;;;142;sDef
+630;Square Shield;Armor;icon;icon.shield_square_shield_i00;;
+630;Square Shield;Armor;default_action;EQUIP;;
+630;Square Shield;Armor;bodypart;lhand;;
+630;Square Shield;Armor;immediate_effect;true;;
+630;Square Shield;Armor;crystal_count;187;;
+630;Square Shield;Armor;crystal_type;D;;
+630;Square Shield;Armor;material;FINE_STEEL;;
+630;Square Shield;Armor;weight;1310;;
+630;Square Shield;Armor;price;103000;;
+630;Square Shield;Armor;commissionItemType;SHIELD;;
+630;Square Shield;Armor;isAppearanceable;true;;
+630;Square Shield;Armor;enchant_enabled;true;;
+630;Square Shield;Armor;;;-8;rEvas
+630;Square Shield;Armor;;;20;rShld
+630;Square Shield;Armor;;;154;sDef
+631;Eldarake;Armor;icon;icon.shield_eldarake_i00;;
+631;Eldarake;Armor;default_action;EQUIP;;
+631;Eldarake;Armor;bodypart;lhand;;
+631;Eldarake;Armor;immediate_effect;true;;
+631;Eldarake;Armor;crystal_count;53;;
+631;Eldarake;Armor;crystal_type;C;;
+631;Eldarake;Armor;material;FINE_STEEL;;
+631;Eldarake;Armor;weight;1290;;
+631;Eldarake;Armor;price;133000;;
+631;Eldarake;Armor;commissionItemType;SHIELD;;
+631;Eldarake;Armor;isAppearanceable;true;;
+631;Eldarake;Armor;enchant_enabled;true;;
+631;Eldarake;Armor;;;-8;rEvas
+631;Eldarake;Armor;;;20;rShld
+631;Eldarake;Armor;;;166;sDef
+632;Knight's Shield;Armor;icon;icon.shield_knight_shield_i00;;
+632;Knight's Shield;Armor;default_action;EQUIP;;
+632;Knight's Shield;Armor;bodypart;lhand;;
+632;Knight's Shield;Armor;immediate_effect;true;;
+632;Knight's Shield;Armor;crystal_count;67;;
+632;Knight's Shield;Armor;crystal_type;C;;
+632;Knight's Shield;Armor;material;FINE_STEEL;;
+632;Knight's Shield;Armor;weight;1260;;
+632;Knight's Shield;Armor;price;169000;;
+632;Knight's Shield;Armor;commissionItemType;SHIELD;;
+632;Knight's Shield;Armor;isAppearanceable;true;;
+632;Knight's Shield;Armor;enchant_enabled;true;;
+632;Knight's Shield;Armor;;;-8;rEvas
+632;Knight's Shield;Armor;;;20;rShld
+632;Knight's Shield;Armor;;;178;sDef
+633;Zubei's Shield;Armor;icon;icon.shield_shrnoens_shield_i00;;
+633;Zubei's Shield;Armor;default_action;EQUIP;;
+633;Zubei's Shield;Armor;bodypart;lhand;;
+633;Zubei's Shield;Armor;immediate_effect;true;;
+633;Zubei's Shield;Armor;crystal_count;72;;
+633;Zubei's Shield;Armor;crystal_type;B;;
+633;Zubei's Shield;Armor;material;MITHRIL;;
+633;Zubei's Shield;Armor;weight;1210;;
+633;Zubei's Shield;Armor;price;545000;;
+633;Zubei's Shield;Armor;enchant_enabled;true;;
+633;Zubei's Shield;Armor;isAppearanceable;true;;
+633;Zubei's Shield;Armor;commissionItemType;SHIELD;;
+633;Zubei's Shield;Armor;;;-8;rEvas
+633;Zubei's Shield;Armor;;;20;rShld
+633;Zubei's Shield;Armor;;;216;sDef
+641;Dark Crystal Shield;Armor;icon;icon.shield_dark_crystal_shield_i00;;
+641;Dark Crystal Shield;Armor;default_action;EQUIP;;
+641;Dark Crystal Shield;Armor;bodypart;lhand;;
+641;Dark Crystal Shield;Armor;immediate_effect;true;;
+641;Dark Crystal Shield;Armor;crystal_count;75;;
+641;Dark Crystal Shield;Armor;crystal_type;A;;
+641;Dark Crystal Shield;Armor;material;CRYSTAL;;
+641;Dark Crystal Shield;Armor;weight;1190;;
+641;Dark Crystal Shield;Armor;price;935000;;
+641;Dark Crystal Shield;Armor;enchant_enabled;true;;
+641;Dark Crystal Shield;Armor;isAppearanceable;true;;
+641;Dark Crystal Shield;Armor;commissionItemType;SHIELD;;
+641;Dark Crystal Shield;Armor;;;-8;rEvas
+641;Dark Crystal Shield;Armor;;;20;rShld
+641;Dark Crystal Shield;Armor;;;243;sDef
+673;Avadon Shield;Armor;icon;icon.shield_avadon_shield_i00;;
+673;Avadon Shield;Armor;default_action;EQUIP;;
+673;Avadon Shield;Armor;bodypart;lhand;;
+673;Avadon Shield;Armor;immediate_effect;true;;
+673;Avadon Shield;Armor;crystal_count;72;;
+673;Avadon Shield;Armor;crystal_type;B;;
+673;Avadon Shield;Armor;material;DAMASCUS;;
+673;Avadon Shield;Armor;weight;1210;;
+673;Avadon Shield;Armor;price;545000;;
+673;Avadon Shield;Armor;commissionItemType;SHIELD;;
+673;Avadon Shield;Armor;isAppearanceable;true;;
+673;Avadon Shield;Armor;enchant_enabled;true;;
+673;Avadon Shield;Armor;;;-8;rEvas
+673;Avadon Shield;Armor;;;20;rShld
+673;Avadon Shield;Armor;;;216;sDef
+686;Chair;EtcItem;icon;icon.etc_branch_blue_i00;;
+686;Chair;EtcItem;immediate_effect;true;;
+686;Chair;EtcItem;material;WOOD;;
+686;Chair;EtcItem;weight;100;;
+686;Chair;EtcItem;commissionItemType;OTHER_ITEM;;
+686;Chair;EtcItem;price;1000;;
+687;Darin's Letter;EtcItem;icon;icon.etc_scroll_gray_i00;;
+687;Darin's Letter;EtcItem;immediate_effect;true;;
+687;Darin's Letter;EtcItem;material;PAPER;;
+687;Darin's Letter;EtcItem;is_tradable;false;;
+687;Darin's Letter;EtcItem;is_dropable;false;;
+687;Darin's Letter;EtcItem;is_sellable;false;;
+687;Darin's Letter;EtcItem;is_depositable;false;;
+687;Darin's Letter;EtcItem;is_questitem;true;;
+688;Roxxy's Kerchief;EtcItem;icon;icon.etc_piece_of_cloth_white_i00;;
+688;Roxxy's Kerchief;EtcItem;immediate_effect;true;;
+688;Roxxy's Kerchief;EtcItem;material;CLOTH;;
+688;Roxxy's Kerchief;EtcItem;is_tradable;false;;
+688;Roxxy's Kerchief;EtcItem;is_dropable;false;;
+688;Roxxy's Kerchief;EtcItem;is_sellable;false;;
+688;Roxxy's Kerchief;EtcItem;is_depositable;false;;
+688;Roxxy's Kerchief;EtcItem;is_questitem;true;;
+689;Poetry Book;EtcItem;icon;icon.etc_spell_books_red_i00;;
+689;Poetry Book;EtcItem;immediate_effect;true;;
+689;Poetry Book;EtcItem;material;PAPER;;
+689;Poetry Book;EtcItem;is_tradable;false;;
+689;Poetry Book;EtcItem;is_dropable;false;;
+689;Poetry Book;EtcItem;is_sellable;false;;
+689;Poetry Book;EtcItem;is_depositable;false;;
+689;Poetry Book;EtcItem;is_questitem;true;;
+690;Lyrics Book;EtcItem;icon;icon.item_normal06;;
+690;Lyrics Book;EtcItem;immediate_effect;true;;
+690;Lyrics Book;EtcItem;material;PAPER;;
+690;Lyrics Book;EtcItem;is_tradable;false;;
+690;Lyrics Book;EtcItem;is_dropable;false;;
+690;Lyrics Book;EtcItem;is_sellable;false;;
+690;Lyrics Book;EtcItem;is_depositable;false;;
+690;Lyrics Book;EtcItem;is_questitem;true;;
+691;Romance Novel;EtcItem;icon;icon.item_normal07;;
+691;Romance Novel;EtcItem;immediate_effect;true;;
+691;Romance Novel;EtcItem;material;PAPER;;
+691;Romance Novel;EtcItem;is_tradable;false;;
+691;Romance Novel;EtcItem;is_dropable;false;;
+691;Romance Novel;EtcItem;is_sellable;false;;
+691;Romance Novel;EtcItem;is_depositable;false;;
+691;Romance Novel;EtcItem;is_questitem;true;;
+692;Arujien's Letter;EtcItem;icon;icon.item_canuse37;;
+692;Arujien's Letter;EtcItem;immediate_effect;true;;
+692;Arujien's Letter;EtcItem;material;PAPER;;
+692;Arujien's Letter;EtcItem;is_tradable;false;;
+692;Arujien's Letter;EtcItem;is_dropable;false;;
+692;Arujien's Letter;EtcItem;is_sellable;false;;
+692;Arujien's Letter;EtcItem;is_depositable;false;;
+692;Arujien's Letter;EtcItem;is_questitem;true;;
+693;Greenis' Letter;EtcItem;icon;icon.etc_letter_white_i00;;
+693;Greenis' Letter;EtcItem;immediate_effect;true;;
+693;Greenis' Letter;EtcItem;material;PAPER;;
+693;Greenis' Letter;EtcItem;is_tradable;false;;
+693;Greenis' Letter;EtcItem;is_dropable;false;;
+693;Greenis' Letter;EtcItem;is_sellable;false;;
+693;Greenis' Letter;EtcItem;is_depositable;false;;
+693;Greenis' Letter;EtcItem;is_questitem;true;;
+694;Ingredient List;EtcItem;icon;icon.item_normal37;;
+694;Ingredient List;EtcItem;immediate_effect;true;;
+694;Ingredient List;EtcItem;material;PAPER;;
+694;Ingredient List;EtcItem;is_tradable;false;;
+694;Ingredient List;EtcItem;is_dropable;false;;
+694;Ingredient List;EtcItem;is_sellable;false;;
+694;Ingredient List;EtcItem;is_depositable;false;;
+694;Ingredient List;EtcItem;is_questitem;true;;
+695;Onyx Beast's Blood;EtcItem;icon;icon.item_canuse48;;
+695;Onyx Beast's Blood;EtcItem;immediate_effect;true;;
+695;Onyx Beast's Blood;EtcItem;material;STEEL;;
+695;Onyx Beast's Blood;EtcItem;is_tradable;false;;
+695;Onyx Beast's Blood;EtcItem;is_dropable;false;;
+695;Onyx Beast's Blood;EtcItem;is_sellable;false;;
+695;Onyx Beast's Blood;EtcItem;is_depositable;false;;
+695;Onyx Beast's Blood;EtcItem;is_stackable;true;;
+695;Onyx Beast's Blood;EtcItem;is_questitem;true;;
+696;Mana Seeker's Husk;EtcItem;icon;icon.item_normal30;;
+696;Mana Seeker's Husk;EtcItem;immediate_effect;true;;
+696;Mana Seeker's Husk;EtcItem;material;STEEL;;
+696;Mana Seeker's Husk;EtcItem;is_tradable;false;;
+696;Mana Seeker's Husk;EtcItem;is_dropable;false;;
+696;Mana Seeker's Husk;EtcItem;is_sellable;false;;
+696;Mana Seeker's Husk;EtcItem;is_depositable;false;;
+696;Mana Seeker's Husk;EtcItem;is_stackable;true;;
+696;Mana Seeker's Husk;EtcItem;is_questitem;true;;
+697;Gargoyle's Horn;EtcItem;icon;icon.item_normal24;;
+697;Gargoyle's Horn;EtcItem;immediate_effect;true;;
+697;Gargoyle's Horn;EtcItem;material;STEEL;;
+697;Gargoyle's Horn;EtcItem;is_tradable;false;;
+697;Gargoyle's Horn;EtcItem;is_dropable;false;;
+697;Gargoyle's Horn;EtcItem;is_sellable;false;;
+697;Gargoyle's Horn;EtcItem;is_depositable;false;;
+697;Gargoyle's Horn;EtcItem;is_stackable;true;;
+697;Gargoyle's Horn;EtcItem;is_questitem;true;;
+698;Gilbert's List;EtcItem;icon;icon.item_normal37;;
+698;Gilbert's List;EtcItem;immediate_effect;true;;
+698;Gilbert's List;EtcItem;material;STEEL;;
+698;Gilbert's List;EtcItem;is_tradable;false;;
+698;Gilbert's List;EtcItem;is_dropable;false;;
+698;Gilbert's List;EtcItem;is_sellable;false;;
+698;Gilbert's List;EtcItem;is_depositable;false;;
+698;Gilbert's List;EtcItem;is_questitem;true;;
+699;Orc's Nose;EtcItem;icon;icon.item_canuse05;;
+699;Orc's Nose;EtcItem;immediate_effect;true;;
+699;Orc's Nose;EtcItem;material;STEEL;;
+699;Orc's Nose;EtcItem;is_tradable;false;;
+699;Orc's Nose;EtcItem;is_dropable;false;;
+699;Orc's Nose;EtcItem;is_sellable;false;;
+699;Orc's Nose;EtcItem;is_depositable;false;;
+699;Orc's Nose;EtcItem;is_stackable;true;;
+699;Orc's Nose;EtcItem;is_questitem;true;;
