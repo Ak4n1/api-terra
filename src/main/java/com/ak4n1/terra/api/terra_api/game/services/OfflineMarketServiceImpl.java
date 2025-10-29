@@ -3,17 +3,15 @@ package com.ak4n1.terra.api.terra_api.game.services;
 import com.ak4n1.terra.api.terra_api.game.entities.CharacterOfflineTrade;
 import com.ak4n1.terra.api.terra_api.game.entities.CharacterOfflineTradeItem;
 import com.ak4n1.terra.api.terra_api.game.entities.Item;
-import com.ak4n1.terra.api.terra_api.game.entities.ItemXmlEntity;
 import com.ak4n1.terra.api.terra_api.game.repositories.CharacterRepository;
 import com.ak4n1.terra.api.terra_api.game.repositories.CharacterOfflineTradeRepository;
 import com.ak4n1.terra.api.terra_api.game.repositories.CharacterOfflineTradeItemRepository;
 import com.ak4n1.terra.api.terra_api.game.repositories.ItemRepository;
-import com.ak4n1.terra.api.terra_api.game.repositories.ItemXmlRepository;
-import com.ak4n1.terra.api.terra_api.game.utils.ItemLoaderService;
+import com.ak4n1.terra.api.terra_api.game.l2j.data.ItemTable;
+import com.ak4n1.terra.api.terra_api.game.l2j.model.item.ItemTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.ak4n1.terra.api.terra_api.game.dto.OfflineStoreDTO;
@@ -28,11 +26,8 @@ import java.util.Optional;
 public class OfflineMarketServiceImpl implements OfflineMarketService {
     private static final Logger logger = LoggerFactory.getLogger(OfflineMarketServiceImpl.class);
 
-    @Value("${terra.items.path}")
-    private String resourceFolder;
-
     @Autowired
-    private ItemLoaderService itemLoaderService;
+    private ItemTable itemTable;
 
     @Autowired
     private CharacterRepository characterRepository;
@@ -42,9 +37,6 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
 
     @Autowired
     private CharacterOfflineTradeItemRepository itemRepo;
-
-    @Autowired
-    private ItemXmlRepository itemXmlRepo;
 
     @Autowired
     private ItemRepository itemsRepo;
@@ -75,30 +67,35 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
                         itemDTO.setItemId(item.getItemId()); // Setear igual para evitar null
                     }
 
-                    // Usar List para evitar error de duplicados
-                    List<ItemXmlEntity> itemXmlList = itemXmlRepo.findAllByIdCustom(itemDTO.getItemId());
-                    if (!itemXmlList.isEmpty()) {
-                        ItemXmlEntity itemXml = itemXmlList.get(0);
-                        itemDTO.setName(itemXml.getName());
-                        itemDTO.setType(itemXml.getType());
-                        itemDTO.setAttributes(itemXml.getAttributes());
-                        itemDTO.setStats(itemXml.getStats());
+                    // ✅ NUEVO: Usar ItemTable en memoria
+                    ItemTemplate template = itemTable.getTemplate(itemDTO.getItemId());
+                    if (template != null) {
+                        itemDTO.setName(template.getName());
+                        itemDTO.setType(template.getItemType());
+                        // Formato JSON para que el frontend encuentre el icon
+                        String attributesJson = String.format("{\"icon\":\"%s\",\"name\":\"%s\"}", 
+                            template.getIcon(), template.getName());
+                        itemDTO.setAttributes(attributesJson);
+                        itemDTO.setStats(template.getGrade());
                     } else {
-                        logger.warn("ItemXmlEntity NO encontrada para itemId {}", itemDTO.getItemId());
+                        logger.warn("Item {} no encontrado en catálogo", itemDTO.getItemId());
                     }
                 }
                 if (trade.getType() == 3) {
                     itemDTO.setItemId(item.getItemId());
 
-                    List<ItemXmlEntity> itemXmlList = itemXmlRepo.findAllByIdCustom(itemDTO.getItemId());
-                    if (!itemXmlList.isEmpty()) {
-                        ItemXmlEntity itemXml = itemXmlList.get(0);
-                        itemDTO.setName(itemXml.getName());
-                        itemDTO.setType(itemXml.getType());
-                        itemDTO.setAttributes(itemXml.getAttributes());
-                        itemDTO.setStats(itemXml.getStats());
+                    // ✅ NUEVO: Usar ItemTable en memoria
+                    ItemTemplate template = itemTable.getTemplate(itemDTO.getItemId());
+                    if (template != null) {
+                        itemDTO.setName(template.getName());
+                        itemDTO.setType(template.getItemType());
+                        // Formato JSON para que el frontend encuentre el icon
+                        String attributesJson = String.format("{\"icon\":\"%s\",\"name\":\"%s\"}", 
+                            template.getIcon(), template.getName());
+                        itemDTO.setAttributes(attributesJson);
+                        itemDTO.setStats(template.getGrade());
                     } else {
-                        logger.warn("ItemXmlEntity NO encontrada para itemId {}", item.getItemId());
+                        logger.warn("Item {} no encontrado en catálogo", item.getItemId());
                     }
                 }
 
