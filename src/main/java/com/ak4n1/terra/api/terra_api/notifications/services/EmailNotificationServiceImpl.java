@@ -10,6 +10,18 @@ import org.springframework.stereotype.Service;
 
 import jakarta.mail.internet.MimeMessage;
 
+/**
+ * Implementación del servicio de envío de notificaciones por email.
+ * 
+ * <p>Este servicio maneja el envío de emails HTML usando JavaMailSender.
+ * Configura los mensajes MIME con remitente, destinatario, asunto y cuerpo HTML.
+ * 
+ * @see EmailNotificationService
+ * @see JavaMailSender
+ * @see com.ak4n1.terra.api.terra_api.notifications.config.EmailConfig
+ * @author ak4n1
+ * @since 1.0
+ */
 @Service
 public class EmailNotificationServiceImpl implements EmailNotificationService {
 
@@ -21,6 +33,13 @@ public class EmailNotificationServiceImpl implements EmailNotificationService {
     @Autowired
     private JavaMailSender emailSender;
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param to Dirección de correo electrónico del destinatario
+     * @param subject Asunto del email
+     * @param body Cuerpo del email en formato HTML
+     */
     @Override
     public void sendEmail(String to, String subject, String body) {
         try {

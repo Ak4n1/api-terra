@@ -32,6 +32,19 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Filtro de autenticación JWT que maneja el proceso de login.
+ * 
+ * <p>Este filtro intercepta las peticiones de login, valida las credenciales,
+ * genera tokens JWT (access y refresh) y los guarda como cookies httpOnly.
+ * También registra la actividad de login en el sistema.
+ * 
+ * @see UsernamePasswordAuthenticationFilter
+ * @see com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig
+ * @see com.ak4n1.terra.api.terra_api.security.filters.JwtValidationFilter
+ * @author ak4n1
+ * @since 1.0
+ */
 public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilter {
 
     private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
@@ -42,6 +55,16 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
     private final AccountMasterRepository userRepo;
     private final RecentActivityRepository activityRepo;
 
+    /**
+     * Constructor que inicializa el filtro con las dependencias necesarias.
+     * 
+     * <p>Configura el filtro para procesar peticiones a "/api/auth/login".
+     * 
+     * @param authManager Gestor de autenticación
+     * @param tokenRepo Repositorio de tokens activos
+     * @param userRepo Repositorio de usuarios
+     * @param activityRepo Repositorio de actividad reciente
+     */
     public JwtAuthenticationFilter(AuthenticationManager authManager,
                                    ActiveTokenRepository tokenRepo,
                                    AccountMasterRepository userRepo,
@@ -53,6 +76,17 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
         setFilterProcessesUrl("/api/auth/login");
     }
 
+    /**
+     * Intenta autenticar al usuario con las credenciales recibidas.
+     * 
+     * <p>Lee las credenciales del body de la petición (email y password) y las
+     * envía al AuthenticationManager para validación.
+     * 
+     * @param req HttpServletRequest con las credenciales
+     * @param res HttpServletResponse (no utilizado)
+     * @return Authentication si la autenticación fue exitosa
+     * @throws AuthenticationException si las credenciales son inválidas, email no verificado o cuenta deshabilitada
+     */
     @Override
     public Authentication attemptAuthentication(HttpServletRequest req, HttpServletResponse res)
             throws AuthenticationException {
@@ -87,6 +121,19 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
     }
 
 
+    /**
+     * Maneja la autenticación exitosa generando tokens JWT y guardándolos como cookies.
+     * 
+     * <p>Genera un access token y un refresh token, los guarda como cookies httpOnly,
+     * almacena el token en la base de datos y registra la actividad de login.
+     * 
+     * @param req HttpServletRequest de la petición
+     * @param res HttpServletResponse para enviar las cookies
+     * @param chain FilterChain para continuar el procesamiento
+     * @param auth Autenticación exitosa con los datos del usuario
+     * @throws IOException si hay error escribiendo la respuesta
+     * @throws ServletException si hay error en el procesamiento
+     */
     @Override
     protected void successfulAuthentication(HttpServletRequest req,
                                             HttpServletResponse res,
@@ -241,6 +288,17 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
         new ObjectMapper().writeValue(res.getOutputStream(), body);
     }
 
+    /**
+     * Maneja la autenticación fallida enviando el error apropiado al cliente.
+     * 
+     * <p>Distingue entre diferentes tipos de errores (credenciales inválidas,
+     * email no verificado, cuenta deshabilitada) y envía mensajes específicos.
+     * 
+     * @param req HttpServletRequest de la petición
+     * @param res HttpServletResponse para enviar el error
+     * @param failed Excepción de autenticación con el motivo del fallo
+     * @throws IOException si hay error escribiendo la respuesta
+     */
     @Override
     protected void unsuccessfulAuthentication(HttpServletRequest req,
                                               HttpServletResponse res,

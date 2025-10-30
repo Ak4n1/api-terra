@@ -31,6 +31,17 @@ import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Implementación del servicio de autenticación.
+ * 
+ * <p>Proporciona la lógica de negocio para registro, verificación de email,
+ * recuperación de contraseña y gestión de usuarios. Es la clase RECOMENDADA
+ * para todas las operaciones de autenticación.
+ * 
+ * @see AuthService
+ * @author ak4n1
+ * @since 1.0
+ */
 @Service
 public class AuthServiceImpl implements AuthService {
 
@@ -51,6 +62,14 @@ public class AuthServiceImpl implements AuthService {
     @Autowired
     private EmailContent emailContent;
 
+    /**
+     * {@inheritDoc}
+     * 
+     * <p>Verifica que el email no exista, crea el usuario con rol ROLE_USER,
+     * codifica la contraseña y envía un email de verificación.
+     * 
+     * @throws com.ak4n1.terra.api.terra_api.auth.exceptions.EmailAlreadyExistsException si el email ya existe
+     */
     @Override
     @Transactional
     public ResponseEntity<?> save(RegisterRequestDTO registerRequest) {
@@ -108,6 +127,14 @@ public class AuthServiceImpl implements AuthService {
     }
 
 
+    /**
+     * {@inheritDoc}
+     * 
+     * <p>Valida que el usuario exista, verifica si hay un token válido previo
+     * (y devuelve error si no ha expirado), genera un nuevo token y envía el email.
+     * 
+     * @throws com.ak4n1.terra.api.terra_api.auth.exceptions.UserNotFoundException si el usuario no existe
+     */
     public Map<String, Object> sendPasswordResetEmail(String email) {
         Map<String, Object> response = new HashMap<>();
         Optional<AccountMaster> userOptional = accountMasterRepository.findByEmail(email);
@@ -167,6 +194,14 @@ public class AuthServiceImpl implements AuthService {
         return response;
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * <p>Valida que el token exista y no esté expirado, codifica la nueva contraseña
+     * y elimina el token de reseteo del usuario.
+     * 
+     * @throws com.ak4n1.terra.api.terra_api.auth.exceptions.TokenExpiredException si el token es inválido o expiró
+     */
     @Override
     @Transactional
     public Map<String, Object> resetPassword(String tokenUser, String newPassword) {
@@ -196,6 +231,14 @@ public class AuthServiceImpl implements AuthService {
         return response;
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * <p>Verifica que el usuario exista, que el email no esté verificado,
+     * valida el tiempo de espera (15 minutos) y genera un nuevo token de verificación.
+     * 
+     * @throws com.ak4n1.terra.api.terra_api.auth.exceptions.UserNotFoundException si el usuario no existe
+     */
     @Transactional
     public Map<String, String> resendVerificationEmail(String email) {
         Optional<AccountMaster> optional = accountMasterRepository.findByEmail(email);
@@ -239,6 +282,15 @@ public class AuthServiceImpl implements AuthService {
         return Map.of("status", "success", "message", "Verification email sent");
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * <p>Valida que el token exista, que el email no esté ya verificado
+     * y que el token no esté expirado. Marca el email como verificado y elimina el token.
+     * 
+     * @throws com.ak4n1.terra.api.terra_api.auth.exceptions.TokenExpiredException si el token es inválido o expiró
+     * @throws com.ak4n1.terra.api.terra_api.auth.exceptions.EmailNotVerifiedException si el email ya está verificado
+     */
     @Override
     @Transactional
     public ResponseEntity<?> verifyEmail(String token) {
@@ -270,10 +322,23 @@ public class AuthServiceImpl implements AuthService {
     }
 
 
+    /**
+     * Obtiene el email del usuario autenticado desde el contexto de seguridad.
+     * 
+     * @return Email del usuario autenticado
+     */
     public String getEmailFromToken() {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * <p>Obtiene toda la información del usuario incluyendo roles, terraCoins,
+     * estado de verificación y si tiene contraseña (para detectar autenticación OAuth).
+     * 
+     * @throws com.ak4n1.terra.api.terra_api.auth.exceptions.UserNotFoundException si el usuario no existe
+     */
     @Override
     public Map<String, Object> getCurrentUser(String email) {
         Optional<AccountMaster> optionalUser = accountMasterRepository.findByEmail(email);

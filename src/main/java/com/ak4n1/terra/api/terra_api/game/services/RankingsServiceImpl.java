@@ -17,6 +17,19 @@ import com.ak4n1.terra.api.terra_api.game.entities.Character;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Implementación del servicio de rankings del juego.
+ * 
+ * <p>Este servicio proporciona acceso a los rankings de PK, PvP y clanes,
+ * siempre retornando los top 10 jugadores/clanes ordenados según el criterio
+ * correspondiente. Si hay menos de 10 entradas, se completan con valores vacíos.
+ * 
+ * @see RankingsService
+ * @see CharacterRepository
+ * @see ClanRepository
+ * @author ak4n1
+ * @since 1.0
+ */
 @Service
 public class RankingsServiceImpl implements RankingsService {
 
@@ -27,6 +40,11 @@ public class RankingsServiceImpl implements RankingsService {
     @Autowired
     private ClanRepository clanRepository;
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @return DTO con el ranking de top 10 PK
+     */
     @Override
     public RankingPKResponseDTO getTopPk() {
         // Traigo el top de la DB (puede tener menos de 10)
@@ -51,6 +69,11 @@ public class RankingsServiceImpl implements RankingsService {
         return response;
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @return DTO con el ranking de top 10 PvP
+     */
     @Override
     public RankingPvPResponseDTO getTopPvp() {
         // Traigo el top de la DB (puede tener menos de 10)
@@ -75,6 +98,11 @@ public class RankingsServiceImpl implements RankingsService {
         return response;
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @return DTO con el ranking de top 10 clanes
+     */
     @Override
     public RankingClanResponseDTO getTopClans() {
         List<Clan> topClans = this.clanRepository.findTop10ByOrderByReputationScoreDesc();

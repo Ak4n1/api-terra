@@ -19,14 +19,33 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Parser simplificado de XMLs de items de L2J
+ * Parser simplificado de archivos XML de items de L2J.
+ * 
+ * <p>Esta clase proporciona métodos estáticos para parsear archivos XML que contienen
+ * definiciones de items del juego. Soportará los tipos: Weapon, Armor y EtcItem.
+ * Es la clase RECOMENDADA para procesar archivos XML de items desde ItemTable.
+ * 
+ * @see ItemTable
+ * @see ItemTemplate
+ * @see Weapon
+ * @see Armor
+ * @see EtcItem
+ * @author ak4n1
+ * @since 1.0
  */
 public class ItemXmlParser {
     
     private static final Logger logger = LoggerFactory.getLogger(ItemXmlParser.class);
     
     /**
-     * Parsea un archivo XML y retorna un mapa de items
+     * Parsea un archivo XML y retorna un mapa de items indexados por ID.
+     * 
+     * <p>Procesa todos los elementos &lt;item&gt; del archivo XML y crea objetos
+     * ItemTemplate según el tipo especificado. Los items malformados se registran
+     * en los logs pero no detienen el proceso.
+     * 
+     * @param xmlFile Archivo XML a parsear
+     * @return Mapa con los items parseados indexados por su ID
      */
     public static Map<Integer, ItemTemplate> parseFile(File xmlFile) {
         Map<Integer, ItemTemplate> items = new HashMap<>();
@@ -66,7 +85,13 @@ public class ItemXmlParser {
     }
     
     /**
-     * Parsea un elemento <item> del XML
+     * Parsea un elemento &lt;item&gt; individual del XML y crea el ItemTemplate correspondiente.
+     * 
+     * <p>Extrae todos los atributos y elementos &lt;set&gt; y &lt;stat&gt;, creando un
+     * StatSet que se usa para instanciar el tipo correcto de ItemTemplate (Weapon, Armor o EtcItem).
+     * 
+     * @param itemElement Elemento XML &lt;item&gt; a parsear
+     * @return ItemTemplate parseado según el tipo, o null si el tipo es desconocido
      */
     private static ItemTemplate parseItemElement(Element itemElement) {
         StatSet set = new StatSet();

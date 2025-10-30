@@ -17,6 +17,18 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Implementación del servicio de gestión de clanes.
+ * 
+ * <p>Este servicio proporciona métodos para consultar información detallada de clanes,
+ * incluyendo miembros con estado online, guerras activas, alianzas y datos del líder.
+ * 
+ * @see ClanService
+ * @see ClanRepository
+ * @see CharacterRepository
+ * @author ak4n1
+ * @since 1.0
+ */
 @Service
 public class ClanServiceImpl implements ClanService {
 
@@ -31,6 +43,13 @@ public class ClanServiceImpl implements ClanService {
     @Autowired
     private ClanWarRepository clanWarRepository;
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param clanId ID del clan a consultar
+     * @return DTO con toda la información del clan
+     * @throws RuntimeException si el clan no existe
+     */
     @Override
     public ClanResponseDTO getClanById(Integer clanId) {
         Optional<Clan> optionalClan = clanRepository.findById(clanId);

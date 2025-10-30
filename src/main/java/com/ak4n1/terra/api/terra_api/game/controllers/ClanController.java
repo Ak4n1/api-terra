@@ -16,7 +16,7 @@ public class ClanController {
     private ClanService clanService;
 
 
-    @PostMapping("/by-id") // ✅ Usamos POST
+    @PostMapping("/by-id") 
     public ResponseEntity<ClanResponseDTO> getClanById(@RequestBody ClanRequestDTO request) {
         ClanResponseDTO response = clanService.getClanById(request.getClanId());
         return ResponseEntity.ok(response);

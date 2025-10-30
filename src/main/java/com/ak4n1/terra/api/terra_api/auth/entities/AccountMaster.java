@@ -11,6 +11,15 @@ import jakarta.validation.constraints.Size;
 import java.util.Date;
 import java.util.List;
 
+/**
+ * Entidad que representa un usuario principal del sistema.
+ * 
+ * <p>Contiene información de autenticación, verificación de email,
+ * tokens de reseteo, roles y moneda virtual (Terra Coins).
+ * 
+ * @author ak4n1
+ * @since 1.0
+ */
 @Entity
 @Table(name = "accounts_master")
 public class AccountMaster {

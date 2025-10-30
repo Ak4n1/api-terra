@@ -17,6 +17,24 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.List;
 
+/**
+ * Configuración principal de seguridad de Spring Security.
+ * 
+ * <p>Esta clase configura la seguridad de la aplicación, incluyendo:
+ * <ul>
+ *   <li>Cadena de filtros de seguridad con autenticación JWT</li>
+ *   <li>Configuración CORS para comunicación con el frontend</li>
+ *   <li>Sesiones stateless con JWT</li>
+ *   <li>Rutas públicas y protegidas</li>
+ * </ul>
+ * 
+ * @see SecurityFilterChain
+ * @see JwtAuthenticationFilter
+ * @see JwtValidationFilter
+ * @see TokenJwtConfig
+ * @author ak4n1
+ * @since 1.0
+ */
 @Configuration
 public class SecurityConfig {
 
@@ -24,22 +42,52 @@ public class SecurityConfig {
     private final AccountMasterRepository userRepo;
     private final RecentActivityRepository activityRepository;
 
+    /**
+     * Constructor que recibe las dependencias necesarias para la configuración de seguridad.
+     * 
+     * @param t Repositorio de tokens activos
+     * @param u Repositorio de usuarios (AccountMaster)
+     * @param r Repositorio de actividad reciente
+     */
     public SecurityConfig(ActiveTokenRepository t, AccountMasterRepository u, RecentActivityRepository r) {
         this.activeTokenRepo = t;
         this.userRepo = u;
         this.activityRepository = r;
     }
 
+    /**
+     * Bean para el codificador de contraseñas usando BCrypt.
+     * 
+     * @return PasswordEncoder configurado con BCrypt
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Bean para el gestor de autenticación de Spring Security.
+     * 
+     * @param cfg Configuración de autenticación
+     * @return AuthenticationManager configurado
+     * @throws Exception si hay error en la configuración
+     */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration cfg) throws Exception {
         return cfg.getAuthenticationManager();
     }
 
+    /**
+     * Configura la cadena de filtros de seguridad principal de la aplicación.
+     * 
+     * <p>Define las rutas públicas y protegidas, configura CORS, deshabilita CSRF
+     * (porque usamos JWT stateless), y añade los filtros JWT para autenticación y validación.
+     * 
+     * @param http HttpSecurity para configurar
+     * @param authManager Gestor de autenticación
+     * @return SecurityFilterChain configurado
+     * @throws Exception si hay error en la configuración
+     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    AuthenticationManager authManager) throws Exception {
@@ -109,6 +157,14 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Configura el origen de configuración CORS para permitir peticiones desde el frontend.
+     * 
+     * <p>Permite orígenes específicos (localhost, l2terra.online, etc.) y métodos HTTP.
+     * Habilita el envío de credenciales (cookies) necesarias para los tokens JWT.
+     * 
+     * @return CorsConfigurationSource configurado con los orígenes permitidos
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();

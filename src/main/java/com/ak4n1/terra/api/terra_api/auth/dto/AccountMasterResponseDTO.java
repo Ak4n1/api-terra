@@ -4,6 +4,14 @@ package com.ak4n1.terra.api.terra_api.auth.dto;
 import java.util.Date;
 import java.util.List;
 
+/**
+ * DTO para respuesta con información de un usuario.
+ * 
+ * <p>Contiene los datos públicos del usuario para enviar en respuestas JSON.
+ * 
+ * @author ak4n1
+ * @since 1.0
+ */
 public class AccountMasterResponseDTO {
     private Long id;
     private String email;

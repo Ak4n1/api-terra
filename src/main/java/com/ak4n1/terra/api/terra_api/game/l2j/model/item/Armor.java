@@ -3,7 +3,15 @@ package com.ak4n1.terra.api.terra_api.game.l2j.model.item;
 import com.ak4n1.terra.api.terra_api.game.l2j.model.StatSet;
 
 /**
- * Representa una armadura del juego
+ * Representa una armadura del juego L2J.
+ * 
+ * <p>Subclase de ItemTemplate que contiene información específica de armaduras,
+ * incluyendo tipo de armadura (ligera, pesada, mágica, sigilo) y defensa física/mágica.
+ * 
+ * @see ItemTemplate
+ * @see StatSet
+ * @author ak4n1
+ * @since 1.0
  */
 public class Armor extends ItemTemplate {
     

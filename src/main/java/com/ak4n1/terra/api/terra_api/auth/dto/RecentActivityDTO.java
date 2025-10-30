@@ -2,6 +2,12 @@ package com.ak4n1.terra.api.terra_api.auth.dto;
 
 import java.sql.Timestamp;
 
+/**
+ * DTO para información de actividad reciente de un usuario.
+ * 
+ * @author ak4n1
+ * @since 1.0
+ */
 public class RecentActivityDTO {
     private String action;
     private Timestamp timestamp;

@@ -4,6 +4,14 @@ import jakarta.persistence.*;
 
 import java.util.Objects;
 
+/**
+ * Entidad que representa un rol de usuario en el sistema.
+ * 
+ * <p>Roles típicos incluyen ROLE_USER, ROLE_ADMIN, etc.
+ * 
+ * @author ak4n1
+ * @since 1.0
+ */
 @Entity
 @Table(name = "roles")
 public class Role {

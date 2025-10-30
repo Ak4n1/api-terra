@@ -3,6 +3,14 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+/**
+ * DTO para petición de registro de un nuevo usuario.
+ * 
+ * <p>Incluye validaciones de email y contraseña.
+ * 
+ * @author ak4n1
+ * @since 1.0
+ */
 public class RegisterRequestDTO {
 
     @NotBlank(message = "El correo es obligatorio")

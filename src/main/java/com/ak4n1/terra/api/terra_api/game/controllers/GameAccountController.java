@@ -6,14 +6,11 @@ import com.ak4n1.terra.api.terra_api.game.dto.AccountGameResponseDTO;
 import com.ak4n1.terra.api.terra_api.game.dto.ChangePasswordGameDTO;
 import com.ak4n1.terra.api.terra_api.game.entities.AccountGame;
 import com.ak4n1.terra.api.terra_api.game.services.GameAccountService;
-import org.apache.coyote.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 

@@ -3,7 +3,15 @@ package com.ak4n1.terra.api.terra_api.game.l2j.model.item;
 import com.ak4n1.terra.api.terra_api.game.l2j.model.StatSet;
 
 /**
- * Representa items misceláneos (consumibles, quest items, etc.)
+ * Representa items misceláneos del juego L2J (consumibles, quest items, etc.).
+ * 
+ * <p>Subclase de ItemTemplate que contiene información específica de items misceláneos,
+ * incluyendo tipo de item y si es un quest item.
+ * 
+ * @see ItemTemplate
+ * @see StatSet
+ * @author ak4n1
+ * @since 1.0
  */
 public class EtcItem extends ItemTemplate {
     

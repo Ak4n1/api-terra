@@ -14,8 +14,25 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Tabla de items simplificada del core L2J
- * Carga todos los items en memoria al iniciar la aplicación
+ * Tabla de items simplificada del core L2J.
+ * 
+ * <p>Componente principal que carga todos los items desde archivos XML en memoria
+ * al iniciar la aplicación. Proporciona búsqueda O(1) por ID mediante un array indexado
+ * y búsqueda por nombre usando streams. Es la clase RECOMENDADA para acceder al catálogo
+ * de items desde cualquier parte de la aplicación.
+ * 
+ * <p>Características:
+ * <ul>
+ *   <li>Carga automática al iniciar Spring Boot mediante @PostConstruct</li>
+ *   <li>Búsqueda O(1) por ID usando array indexado</li>
+ *   <li>Búsqueda por nombre con streams (case-insensitive)</li>
+ *   <li>Recarga manual disponible</li>
+ * </ul>
+ * 
+ * @see ItemTemplate
+ * @see ItemXmlParser
+ * @author ak4n1
+ * @since 1.0
  */
 @Component
 public class ItemTable {
@@ -29,7 +46,11 @@ public class ItemTable {
     private final Map<Integer, ItemTemplate> _itemsMap = new HashMap<>();
     
     /**
-     * Carga automática al iniciar Spring Boot
+     * Inicializa y carga todos los items desde los archivos XML.
+     * 
+     * <p>Este método se ejecuta automáticamente al iniciar Spring Boot mediante
+     * @PostConstruct. Lee todos los archivos XML de la ruta configurada y carga
+     * los items en memoria.
      */
     @PostConstruct
     public void init() {
@@ -39,7 +60,11 @@ public class ItemTable {
     }
     
     /**
-     * Carga todos los items desde los archivos XML
+     * Carga todos los items desde los archivos XML de la ruta configurada.
+     * 
+     * <p>Procesa todos los archivos XML encontrados en el directorio, parsea cada
+     * item y los almacena en un mapa. Al final construye un array indexado para
+     * búsqueda rápida por ID.
      */
     private void loadItems() {
         File itemsDir = new File(itemsPath);
@@ -97,7 +122,9 @@ public class ItemTable {
     }
     
     /**
-     * Construye un array indexado por ID para búsqueda O(1)
+     * Construye un array indexado por ID para búsqueda O(1).
+     * 
+     * @param maxId ID más alto encontrado en los items cargados
      */
     private void buildFastLookupTable(int maxId) {
         logger.info("🗄️ Construyendo tabla de búsqueda rápida (tamaño: {})", maxId + 1);
@@ -112,10 +139,10 @@ public class ItemTable {
     }
     
     /**
-     * Obtiene un item por su ID - Búsqueda O(1)
+     * Obtiene un item por su ID mediante búsqueda O(1).
      * 
-     * @param id ID del item
-     * @return ItemTemplate o null si no existe
+     * @param id ID del item a buscar
+     * @return ItemTemplate si existe, null si no se encuentra o el ID está fuera de rango
      */
     public ItemTemplate getTemplate(int id) {
         if (id < 0 || id >= _allTemplates.length) {
@@ -125,21 +152,28 @@ public class ItemTable {
     }
     
     /**
-     * Obtiene todos los items
+     * Obtiene todos los items cargados en memoria.
+     * 
+     * @return Colección con todos los ItemTemplate cargados
      */
     public Collection<ItemTemplate> getAllItems() {
         return _itemsMap.values();
     }
     
     /**
-     * Obtiene el número total de items cargados
+     * Obtiene el número total de items cargados en memoria.
+     * 
+     * @return Cantidad total de items cargados
      */
     public int getItemCount() {
         return _itemsMap.size();
     }
     
     /**
-     * Recarga todos los items desde los XMLs
+     * Recarga completamente todos los items desde los archivos XML.
+     * 
+     * <p>Limpia el catálogo actual y vuelve a cargar todos los items desde la ruta
+     * configurada. Útil cuando se actualizan los archivos XML sin reiniciar la aplicación.
      */
     public void reload() {
         logger.info("🔄 Recargando items desde XMLs...");
@@ -149,7 +183,13 @@ public class ItemTable {
     }
     
     /**
-     * Busca items por nombre (búsqueda parcial case-insensitive)
+     * Busca items por nombre usando búsqueda parcial case-insensitive.
+     * 
+     * <p>Recorre todos los items cargados y retorna aquellos cuyo nombre contiene
+     * la cadena especificada (sin distinguir mayúsculas/minúsculas).
+     * 
+     * @param name Nombre o fragmento del nombre a buscar
+     * @return Colección de ItemTemplate que coinciden con la búsqueda
      */
     public Collection<ItemTemplate> searchByName(String name) {
         String searchLower = name.toLowerCase();

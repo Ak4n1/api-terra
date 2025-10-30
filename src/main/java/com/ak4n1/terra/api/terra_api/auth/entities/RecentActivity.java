@@ -4,6 +4,16 @@ package com.ak4n1.terra.api.terra_api.auth.entities;
 import jakarta.persistence.*;
 import java.util.Date;
 
+/**
+ * Entidad que representa una actividad reciente de un usuario.
+ * 
+ * <p>Registra acciones como login, cambio de contraseña, etc.
+ * con timestamp e IP del cliente.
+ * 
+ * @see AccountMaster
+ * @author ak4n1
+ * @since 1.0
+ */
 @Entity
 public class RecentActivity {
 

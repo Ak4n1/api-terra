@@ -25,6 +25,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Controlador REST para autenticación con Google OAuth.
+ * 
+ * <p>Gestiona el login de usuarios mediante Google Firebase Authentication.
+ * Verifica el token ID de Google, crea o encuentra el usuario en el sistema
+ * y genera tokens JWT para la sesión.
+ * 
+ * @see FirebaseAuth
+ * @see com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig
+ * @author ak4n1
+ * @since 1.0
+ */
 @RestController
 @RequestMapping("/api/auth/google")
 public class GoogleAuthController {
@@ -39,6 +51,14 @@ public class GoogleAuthController {
     @Autowired
     private RoleRepository roleRepository;
 
+    /**
+     * Constructor que recibe las dependencias necesarias para la autenticación con Google.
+     * 
+     * @param accountMasterRepository Repositorio de usuarios
+     * @param activeTokenRepository Repositorio de tokens activos
+     * @param recentActivityRepository Repositorio de actividad reciente
+     * @param firebaseAuth Cliente de Firebase Authentication
+     */
     public GoogleAuthController(AccountMasterRepository accountMasterRepository,
             ActiveTokenRepository activeTokenRepository,
             RecentActivityRepository recentActivityRepository,
@@ -50,6 +70,18 @@ public class GoogleAuthController {
 
     }
 
+    /**
+     * Autentica un usuario usando el token ID de Google.
+     * 
+     * <p>Verifica el token con Firebase, crea o actualiza el usuario en el sistema
+     * y genera un JWT para la sesión. Guarda el token y registra la actividad.
+     * 
+     * @param request Cuerpo de la petición con el idToken de Google
+     * @param httpRequest HttpServletRequest para obtener la IP del cliente
+     * @param httpResponse HttpServletResponse para configurar la cookie de acceso
+     * @return ResponseEntity con el resultado de la autenticación
+     * @throws IOException si hay error procesando la respuesta
+     */
     @PostMapping("/login")
     public ResponseEntity<?> authenticateWithGoogle(@RequestBody Map<String, String> request,
             HttpServletRequest httpRequest,
@@ -128,6 +160,17 @@ public class GoogleAuthController {
         }
     }
 
+    /**
+     * Busca un usuario existente por email o crea uno nuevo si no existe.
+     * 
+     * <p>Si el usuario existe pero no tiene googleUid, lo actualiza.
+     * Si no existe, crea un nuevo usuario con email verificado y rol ROLE_USER.
+     * 
+     * @param email Email del usuario desde Google
+     * @param name Nombre del usuario desde Google
+     * @param googleUid UID único de Google del usuario
+     * @return AccountMaster existente o recién creado
+     */
     private AccountMaster findOrCreateUser(String email, String name, String googleUid) {
         Optional<AccountMaster> existingUser = accountMasterRepository.findByEmail(email);
         if (existingUser.isPresent()) {

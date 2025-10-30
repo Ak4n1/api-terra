@@ -13,6 +13,7 @@ import com.ak4n1.terra.api.terra_api.game.exceptions.GameAccountNotFoundExceptio
 import com.ak4n1.terra.api.terra_api.game.exceptions.InvalidCreationCodeException;
 import com.ak4n1.terra.api.terra_api.game.repositories.AccountCreateCodeRepository;
 import com.ak4n1.terra.api.terra_api.game.repositories.AccountGameRepository;
+import com.ak4n1.terra.api.terra_api.notifications.builders.EmailContent;
 import com.ak4n1.terra.api.terra_api.notifications.services.EmailNotificationService;
 import com.ak4n1.terra.api.terra_api.utils.CodeGenerator;
 import com.ak4n1.terra.api.terra_api.game.utils.L2ClientPasswordEncoder;
@@ -27,6 +28,22 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Implementación del servicio de gestión de cuentas de juego.
+ * 
+ * <p>Este servicio maneja todas las operaciones relacionadas con las cuentas de juego,
+ * incluyendo creación, recuperación, cambio de contraseñas y generación de códigos
+ * de verificación. Utiliza codificación de contraseñas compatible con L2J.
+ * 
+ * @see GameAccountService
+ * @see AccountGameRepository
+ * @see AccountCreateCodeRepository
+ * @see com.ak4n1.terra.api.terra_api.game.utils.L2ClientPasswordEncoder
+ * @see com.ak4n1.terra.api.terra_api.notifications.services.EmailNotificationService
+ * @see com.ak4n1.terra.api.terra_api.notifications.builders.EmailContent
+ * @author ak4n1
+ * @since 1.0
+ */
 @Service
 public class GameAccountServiceImpl implements GameAccountService {
 
@@ -41,8 +58,24 @@ public class GameAccountServiceImpl implements GameAccountService {
     @Autowired
     private AccountCreateCodeRepository accountCreateCodeRepository;
 
+    @Autowired
+    private EmailContent emailContent;
 
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @param dto DTO con los datos de la cuenta (username, password, código de creación)
+     * @param email Email del usuario propietario
+     * @return Entidad AccountGame creada
+     * @throws com.ak4n1.terra.api.terra_api.game.exceptions.CreationCodeNotFoundException si el código no existe
+     * @throws com.ak4n1.terra.api.terra_api.game.exceptions.CreationCodeAlreadyUsedException si el código ya fue usado
+     * @throws com.ak4n1.terra.api.terra_api.game.exceptions.InvalidCreationCodeException si el código es inválido
+     * @throws com.ak4n1.terra.api.terra_api.game.exceptions.CreationCodeExpiredException si el código expiró
+     * @throws com.ak4n1.terra.api.terra_api.game.exceptions.AccountAlreadyExistsException si la cuenta ya existe
+     */
     @Transactional
+    @Override
     public AccountGame createAccount(AccountGameRequestDTO dto, String email) {
         AccountCreateCode accCode = accountCreateCodeRepository.findByEmail(email)
                 .orElseThrow(() -> new CreationCodeNotFoundException("Creation code not found or expired"));
@@ -89,6 +122,12 @@ public class GameAccountServiceImpl implements GameAccountService {
 
 
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param email Email del usuario
+     * @return Lista de DTOs con la información de las cuentas
+     */
     @Override
     public List<AccountGameResponseDTO> getAccountsByEmail(String email) {
         List<AccountGame> accounts = accountRepo.findByEmail(email);
@@ -105,6 +144,13 @@ public class GameAccountServiceImpl implements GameAccountService {
                 .toList();
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param login Nombre de login de la cuenta de juego
+     * @return Map con el estado de la operación ("success" o "forbidden") y mensaje
+     */
+    @Override
     public Map<String, String> generateAndSendCode(String login) {
         AccountGame account = accountRepo.findByLogin(login)
                 .orElseThrow(() -> new GameAccountNotFoundException("Account not found"));
@@ -131,60 +177,9 @@ public class GameAccountServiceImpl implements GameAccountService {
         accountRepo.save(account);
 
         String subject = "Your Code to Reset Game Account Password:: " + login;
+        String body = emailContent.buildGameAccountPasswordResetEmailBody(code, login);
 
-        StringBuilder body = new StringBuilder();
-        body.append("<div style=\"")
-                .append("font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;")
-                .append("color: #dabe64;")
-                .append("padding: 40px 20px;")
-                .append("text-align: center;")
-                .append("\">")
-                .append("<img src=\"https://assets.l2terra.online/imgs/lineage2Terra_negro.png\" ")
-                .append("alt=\"L2 Terra Logo\" ")
-                .append("style=\"max-width: 280px; margin-bottom: 30px;\" />")
-                .append("<br>")
-                .append("<div style=\"")
-                .append("display: inline-block;")
-                .append("background: linear-gradient(to bottom, #0c0f20, #000000);")
-                .append("padding: 30px;")
-                .append("border-radius: 12px;")
-                .append("max-width: 360px;")
-                .append("width: 100%;")
-                .append("box-sizing: border-box;")
-                .append("box-shadow:0px 0px 30px black;")
-                .append("\">")
-                .append("<p style=\"font-size: 16px; margin-bottom: 12px;\">")
-                .append("Your password reset code is:")
-                .append("</p>")
-                .append("<p style=\"font-size: 34px; font-weight: bold; color: #dabe64; margin: 20px 0;\">")
-                .append(code)
-                .append("</p>")
-                .append("<p style=\"font-size: 16px; margin-bottom: 12px;\">")
-                .append("Game account: <strong>").append(login).append("</strong>")
-                .append("</p>")
-                .append("<p style=\"font-size: 14px; margin-bottom: 10px;\">")
-                .append("This code expires in 15 minutes.")
-                .append("</p>")
-                .append("<p style=\"font-size: 12px; opacity: 0.6; margin-bottom: 20px;\">")
-                .append("If you did not request this, just ignore this email.")
-                .append("</p>")
-                .append("<a href=\"https://l2terra.online\" style=\"")
-                .append("display: inline-block;")
-                .append("padding: 12px 24px;")
-                .append("font-weight: 600;")
-                .append("font-size: 16px;")
-                .append("color: #0c0f20;")
-                .append("background: linear-gradient(to right, #746535, #dabe64);")
-                .append("border-radius: 8px;")
-                .append("text-decoration: none;")
-                .append("margin-top: 10px;")
-                .append("\">")
-                .append("Back to Website")
-                .append("</a>")
-                .append("</div>")
-                .append("</div>");
-
-        emailService.sendEmail(account.getEmail(), subject, body.toString());
+        emailService.sendEmail(account.getEmail(), subject, body);
 
         Map<String, String> map = new HashMap<>();
         map.put("status", "success"); // 200
@@ -193,6 +188,12 @@ public class GameAccountServiceImpl implements GameAccountService {
     }
 
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param email Email del usuario que solicita crear la cuenta
+     * @return Map con el estado de la operación ("success" o "forbidden") y mensaje
+     */
     @Transactional
     @Override
     public Map<String, String> generateAndSendCreateCode(String email) {
@@ -226,25 +227,9 @@ public class GameAccountServiceImpl implements GameAccountService {
         accountCreateCodeRepository.save(codeEntry);
 
         String subject = "Account Creation Code";
+        String body = emailContent.buildGameAccountCreationCodeEmailBody(code);
 
-        StringBuilder body = new StringBuilder()
-                .append("<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #dabe64; padding: 40px 20px; text-align: center;\">")
-                .append("<img src=\"https://assets.l2terra.online/logoJuanLineage_baja_enNegro.webp\" alt=\"L2 Terra Logo\" style=\"max-width: 280px; margin-bottom: 30px;\" />")
-                .append("<br>")
-                .append("<div style=\"display: inline-block; background: linear-gradient(to bottom, #0c0f20, #000000); padding: 30px; border-radius: 12px; max-width: 360px; width: 100%; box-sizing: border-box;\">")
-                .append("<p style=\"font-size: 16px; margin-bottom: 12px;color: #dabe64;\">Your code to complete account creation is:</p>")
-                .append("<p style=\"font-size: 34px; font-weight: bold; color: #dabe64; margin: 20px 0;\">")
-                .append(code)
-                .append("</p>")
-                .append("<p style=\"font-size: 14px; margin-bottom: 10px;color: #dabe64;\">This code expires in 15 minutes.</p>")
-                .append("<p style=\"font-size: 12px; opacity: 0.6; margin-bottom: 20px;color: #dabe64;\">If you didn’t request this, you can ignore the message.</p>")
-                .append("<a href=\"https://l2terra.online\" style=\"display: inline-block; padding: 12px 24px; font-weight: 600; font-size: 16px; color: #0c0f20; background: linear-gradient(to right, #746535, #dabe64); border-radius: 8px; text-decoration: none; margin-top: 10px;\">")
-                .append("Back to Website")
-                .append("</a>")
-                .append("</div>")
-                .append("</div>");
-
-        emailService.sendEmail(email, subject, body.toString());
+        emailService.sendEmail(email, subject, body);
 
         Map<String, String> map = new HashMap<>();
         map.put("status", "success");
@@ -252,7 +237,15 @@ public class GameAccountServiceImpl implements GameAccountService {
         return map;
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param dto DTO con login, código de reset y nueva contraseña
+     * @return Map con el estado de la operación ("success", "unauthorized", "expired" o "error") y mensaje
+     * @throws com.ak4n1.terra.api.terra_api.game.exceptions.GameAccountNotFoundException si la cuenta no existe
+     */
     @Transactional
+    @Override
     public Map<String, String> changePassword(ChangePasswordGameDTO dto) {
         AccountGame account = accountRepo.findByLogin(dto.getLogin())
                 .orElseThrow(() -> new GameAccountNotFoundException("Account not found"));

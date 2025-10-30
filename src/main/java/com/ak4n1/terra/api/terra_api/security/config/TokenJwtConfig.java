@@ -7,22 +7,56 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Configuración para tokens JWT.
+ * 
+ * <p>Esta clase contiene la configuración estática para la generación y validación
+ * de tokens JWT, incluyendo la clave secreta, tiempos de expiración y constantes.
+ * Es la clase RECOMENDADA para acceder a la configuración de JWT.
+ * 
+ * @see io.jsonwebtoken.Jwts
+ * @see com.ak4n1.terra.api.terra_api.security.filters.JwtAuthenticationFilter
+ * @see com.ak4n1.terra.api.terra_api.security.filters.JwtValidationFilter
+ * @author ak4n1
+ * @since 1.0
+ */
 @Component
 public class TokenJwtConfig {
 
     @Value("${jwt.secret}")
     private String secretString;
     
+    /**
+     * Clave secreta estática para firmar y validar tokens JWT.
+     * Se inicializa automáticamente al iniciar la aplicación.
+     */
     public static SecretKey SECRET_KEY;
 
+    /**
+     * Inicializa la clave secreta desde la configuración al iniciar Spring Boot.
+     * 
+     * <p>Convierte el string secreto desde application.properties en una SecretKey
+     * usando el algoritmo HMAC SHA.
+     */
     @PostConstruct
     public void init() {
         SECRET_KEY = Keys.hmacShaKeyFor(secretString.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * Tipo de contenido para respuestas JSON.
+     */
     public static final String CONTENT_TYPE = "application/json";
 
-    // Tiempos de expiración en milisegundos
+    /**
+     * Tiempo de expiración del access token en milisegundos.
+     * Valor: 2 horas (7,200,000 ms)
+     */
     public static final long ACCESS_TOKEN_EXPIRATION = 2 * 60 * 60 * 1000L; // 2 horas en milisegundos
+    
+    /**
+     * Tiempo de expiración del refresh token en milisegundos.
+     * Valor: 7 días (604,800,000 ms)
+     */
     public static final long REFRESH_TOKEN_EXPIRATION = 604800000L; // 7 días
 }

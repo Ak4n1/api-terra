@@ -12,21 +12,47 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Repositorio para la entidad ActiveToken (tokens JWT activos).
+ * 
+ * @see ActiveToken
+ * @author ak4n1
+ * @since 1.0
+ */
 @Repository
 public interface ActiveTokenRepository extends CrudRepository<ActiveToken, Long> {
 
-
-    Optional<ActiveToken> findByToken(String token);  // Método para buscar un ActiveToken por el token
+    /**
+     * Busca un token activo por su valor de token JWT.
+     * 
+     * @param token Valor del token JWT
+     * @return Optional con el token activo si existe, vacío si no
+     */
+    Optional<ActiveToken> findByToken(String token);
     
-    List<ActiveToken> findByAccountMaster_Email(String email);  // Método para buscar tokens por email del usuario
+    /**
+     * Busca todos los tokens activos de un usuario por su email.
+     * 
+     * @param email Email del usuario
+     * @return Lista de tokens activos del usuario
+     */
+    List<ActiveToken> findByAccountMaster_Email(String email);
 
-
-
+    /**
+     * Elimina todos los tokens antiguos de un usuario por su ID.
+     * 
+     * @param userId ID del usuario
+     */
     @Transactional
     @Modifying
     @Query("DELETE FROM ActiveToken a WHERE a.accountMaster.id = :userId")
     void deleteOldTokensByUserId(@Param("userId") Long userId);
 
+    /**
+     * Elimina un token activo por su valor de token JWT.
+     * 
+     * @param token Valor del token JWT a eliminar
+     */
     void deleteByToken(String token);
 
 }

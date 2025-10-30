@@ -22,6 +22,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Implementación del servicio de mercado offline.
+ * 
+ * <p>Este servicio proporciona acceso a las tiendas offline donde los jugadores
+ * pueden vender items mientras están desconectados. Cada tienda incluye información
+ * del vendedor, items disponibles con metadatos del catálogo y precios.
+ * 
+ * @see OfflineMarketService
+ * @see com.ak4n1.terra.api.terra_api.game.l2j.data.ItemTable
+ * @see CharacterOfflineTradeRepository
+ * @author ak4n1
+ * @since 1.0
+ */
 @Service
 public class OfflineMarketServiceImpl implements OfflineMarketService {
     private static final Logger logger = LoggerFactory.getLogger(OfflineMarketServiceImpl.class);
@@ -41,6 +54,11 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
     @Autowired
     private ItemRepository itemsRepo;
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @return Lista de DTOs con todas las tiendas offline disponibles
+     */
     @Override
     public List<OfflineStoreDTO> getAllOfflineStores() {
         List<CharacterOfflineTrade> trades = tradeRepo.findAllByOrderByTimeDesc();
@@ -120,7 +138,13 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
     }
 
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @return Lista vacía de tiendas offline
+     */
     @Override
+    @Deprecated
     public List<OfflineStoreDTO> getTest() {
         return new ArrayList<>();
     }

@@ -3,8 +3,18 @@ package com.ak4n1.terra.api.terra_api.game.l2j.model.item;
 import com.ak4n1.terra.api.terra_api.game.l2j.model.StatSet;
 
 /**
- * Clase base simplificada para items del juego L2J
- * Contiene solo los campos esenciales para la API web
+ * Clase base abstracta simplificada para items del juego L2J.
+ * 
+ * <p>Contiene solo los campos esenciales necesarios para la API web. Esta clase
+ * sirve como base para los tipos específicos de items: Weapon, Armor y EtcItem.
+ * Es la clase RECOMENDADA para representar items del catálogo.
+ * 
+ * @see Weapon
+ * @see Armor
+ * @see EtcItem
+ * @see StatSet
+ * @author ak4n1
+ * @since 1.0
  */
 public abstract class ItemTemplate {
     
@@ -26,7 +36,11 @@ public abstract class ItemTemplate {
     protected String _materialType;
     
     /**
-     * Constructor protegido
+     * Constructor protegido que inicializa el ItemTemplate desde un StatSet.
+     * 
+     * <p>Extrae todos los campos comunes de items desde el StatSet parseado del XML.
+     * 
+     * @param set StatSet con los datos del item parseados del XML
      */
     protected ItemTemplate(StatSet set) {
         _itemId = set.getInt("item_id");
@@ -111,7 +125,11 @@ public abstract class ItemTemplate {
     }
     
     /**
-     * Método abstracto para determinar el tipo de item
+     * Método abstracto para determinar el tipo específico de item.
+     * 
+     * <p>Cada subclase implementa este método para retornar su tipo: "Weapon", "Armor" o "EtcItem".
+     * 
+     * @return String con el tipo de item específico
      */
     public abstract String getItemType();
     

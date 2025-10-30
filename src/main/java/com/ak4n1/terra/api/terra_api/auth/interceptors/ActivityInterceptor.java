@@ -15,6 +15,17 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.util.*;
 
+/**
+ * Interceptor que registra actividades de usuarios en el sistema.
+ * 
+ * <p>Intercepta peticiones exitosas a rutas específicas (login, cambio de contraseña, etc.)
+ * y registra la actividad con timestamp e IP del cliente.
+ * 
+ * @see HandlerInterceptor
+ * @see RecentActivity
+ * @author ak4n1
+ * @since 1.0
+ */
 @Component
 public class ActivityInterceptor implements HandlerInterceptor {
 
@@ -24,11 +35,22 @@ public class ActivityInterceptor implements HandlerInterceptor {
     private final AccountMasterRepository userRepo;
 
 
+    /**
+     * Constructor que recibe los repositorios necesarios.
+     * 
+     * @param activityRepo Repositorio de actividades recientes
+     * @param userRepo Repositorio de usuarios
+     */
     public ActivityInterceptor(RecentActivityRepository activityRepo, AccountMasterRepository userRepo) {
         this.activityRepo = activityRepo;
         this.userRepo = userRepo;
     }
 
+    /**
+     * Obtiene el email del usuario autenticado desde el contexto de seguridad.
+     * 
+     * @return Email del usuario autenticado o null si no está autenticado
+     */
     private String getEmailFromToken() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || auth.getName().equals("anonymousUser")) {
@@ -47,6 +69,17 @@ public class ActivityInterceptor implements HandlerInterceptor {
             "/api/game/auth/registerGameAccount"
     );
 
+    /**
+     * Registra la actividad después de completar una petición exitosa.
+     * 
+     * <p>Solo procesa rutas específicas definidas en pathsToLog y solo si el status
+     * es exitoso (menor a 400). Registra la acción, timestamp e IP del cliente.
+     * 
+     * @param req HttpServletRequest de la petición
+     * @param res HttpServletResponse con el status
+     * @param handler Handler que procesó la petición
+     * @param ex Excepción si hubo (no se usa)
+     */
     @Override
     public void afterCompletion(HttpServletRequest req, HttpServletResponse res, Object handler, Exception ex) {
         String path = req.getRequestURI();

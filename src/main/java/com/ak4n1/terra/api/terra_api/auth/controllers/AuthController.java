@@ -35,6 +35,18 @@ import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.JwtException;
 
+/**
+ * Controlador REST para operaciones de autenticación y gestión de usuarios.
+ * 
+ * <p>Gestiona el registro, login, logout, verificación de email, recuperación de contraseña
+ * y gestión de tokens JWT (incluyendo refresh tokens). Es el controlador RECOMENDADO para
+ * todas las operaciones de autenticación de usuarios.
+ * 
+ * @see AuthService
+ * @see TokenJwtConfig
+ * @author ak4n1
+ * @since 1.0
+ */
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -51,6 +63,16 @@ public class AuthController {
     @Autowired
     private RecentActivityRepository recentActivityRepository;
 
+    /**
+     * Registra un nuevo usuario en el sistema.
+     * 
+     * <p>Valida los datos de entrada y llama al servicio para crear la cuenta.
+     * Envía un email de verificación al usuario registrado.
+     * 
+     * @param registerRequest DTO con email y contraseña del nuevo usuario
+     * @param result Resultado de la validación de Bean Validation
+     * @return ResponseEntity con el resultado del registro (CREATED si es exitoso, BAD_REQUEST si hay errores)
+     */
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDTO registerRequest, BindingResult result) {
         // Validación de campos
@@ -63,6 +85,12 @@ public class AuthController {
         return authService.save(registerRequest); // Crear la cuenta y devolver la respuesta
     }
 
+    /**
+     * Construye una respuesta de error con los mensajes de validación.
+     * 
+     * @param result Resultado de la validación con los errores
+     * @return ResponseEntity con status BAD_REQUEST y los mensajes de error
+     */
     private ResponseEntity<?> validation(BindingResult result) {
         RegisterResponseDTO response = new RegisterResponseDTO();
         response.setStatus(HttpStatus.BAD_REQUEST.value());
@@ -77,6 +105,17 @@ public class AuthController {
         return ResponseEntity.badRequest().body(response); // Devolver el DTO con los errores
     }
 
+    /**
+     * Cierra la sesión del usuario eliminando los tokens.
+     * 
+     * <p>Elimina el token activo de la base de datos y expira las cookies
+     * tanto del access token como del refresh token en el cliente.
+     * 
+     * @param token Access token desde la cookie
+     * @param refreshToken Refresh token desde la cookie
+     * @param response HttpServletResponse para eliminar las cookies
+     * @return ResponseEntity con mensaje de logout exitoso
+     */
     @Transactional
     @PostMapping("/logout")
     public ResponseEntity<?> logout(@CookieValue(value = "access_token", required = false) String token,
@@ -103,6 +142,12 @@ public class AuthController {
         return ResponseEntity.ok(Map.of("message", "Logout exitoso"));
     }
 
+    /**
+     * Obtiene la información del usuario autenticado actual.
+     * 
+     * @param authentication Autenticación de Spring Security con los datos del usuario
+     * @return ResponseEntity con los datos del usuario actual o UNAUTHORIZED si no está autenticado
+     */
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -115,6 +160,12 @@ public class AuthController {
         return ResponseEntity.ok(userData);
     }
 
+    /**
+     * Reenvía el email de recuperación de contraseña.
+     * 
+     * @param email Email del usuario que solicita el reseteo
+     * @return ResponseEntity con el resultado (OK si se envió, BAD_REQUEST si hay error)
+     */
     @PostMapping("/resend-reset-email")
     public ResponseEntity<?> resendResetEmail(@RequestParam String email) {
         Map<String, Object> response = authService.sendPasswordResetEmail(email);
@@ -126,6 +177,13 @@ public class AuthController {
         }
     }
 
+    /**
+     * Restablece la contraseña del usuario usando un token de reseteo.
+     * 
+     * @param tokenUser Token de reseteo de contraseña recibido por email
+     * @param requestBody Cuerpo de la petición con la nueva contraseña
+     * @return ResponseEntity con el resultado (OK si se cambió, BAD_REQUEST si el token es inválido o expiró)
+     */
     @PostMapping("/reset-password")
     public ResponseEntity<Map<String, Object>> resetPassword(
             @RequestParam("token") String tokenUser,
@@ -142,6 +200,12 @@ public class AuthController {
         }
     }
 
+    /**
+     * Reenvía el email de verificación al usuario.
+     * 
+     * @param body Cuerpo de la petición con el email del usuario
+     * @return ResponseEntity con el resultado (OK si se envió, FORBIDDEN si hay restricción de tiempo, BAD_REQUEST si hay error)
+     */
     @PostMapping("/resend-verification")
     public ResponseEntity<?> resendVerificationEmail(@RequestBody Map<String, String> body) {
         String email = body.get("email");
@@ -157,11 +221,23 @@ public class AuthController {
         }
     }
 
+    /**
+     * Verifica el email del usuario usando el token de verificación.
+     * 
+     * @param token Token de verificación recibido por email
+     * @return ResponseEntity con el resultado de la verificación
+     */
     @GetMapping("/verify-email")
     public ResponseEntity<?> verifyEmail(@RequestParam String token) {
         return authService.verifyEmail(token);
     }
 
+    /**
+     * Obtiene el historial de actividad reciente del usuario autenticado.
+     * 
+     * @param authentication Autenticación de Spring Security con los datos del usuario
+     * @return ResponseEntity con la lista de actividades recientes o UNAUTHORIZED si no está autenticado
+     */
     @GetMapping("/recent-activity")
     public ResponseEntity<?> getRecentActivity(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -183,8 +259,14 @@ public class AuthController {
     }
 
     /**
-     * Endpoint para refresh de tokens
-     * Permite renovar el access token usando el refresh token
+     * Renueva el access token usando el refresh token.
+     * 
+     * <p>Valida el refresh token, genera un nuevo access token y lo guarda en la base de datos
+     * y como cookie. Elimina los tokens antiguos del usuario.
+     * 
+     * @param refreshToken Refresh token desde la cookie
+     * @param response HttpServletResponse para configurar la nueva cookie de access token
+     * @return ResponseEntity con el resultado (OK si se renovó, UNAUTHORIZED si el refresh token es inválido o expiró)
      */
     @PostMapping("/refresh")
     public ResponseEntity<?> refreshToken(@CookieValue(value = "refresh_token", required = false) String refreshToken,

@@ -3,7 +3,15 @@ package com.ak4n1.terra.api.terra_api.game.l2j.model.item;
 import com.ak4n1.terra.api.terra_api.game.l2j.model.StatSet;
 
 /**
- * Representa un arma del juego
+ * Representa un arma del juego L2J.
+ * 
+ * <p>Subclase de ItemTemplate que contiene información específica de armas,
+ * incluyendo tipo de arma, daño físico/mágico y capacidad para soulshots/spiritshots.
+ * 
+ * @see ItemTemplate
+ * @see StatSet
+ * @author ak4n1
+ * @since 1.0
  */
 public class Weapon extends ItemTemplate {
     

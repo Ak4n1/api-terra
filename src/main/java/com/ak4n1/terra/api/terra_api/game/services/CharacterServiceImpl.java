@@ -1,7 +1,6 @@
 package com.ak4n1.terra.api.terra_api.game.services;
 
 import com.ak4n1.terra.api.terra_api.game.dto.CharacterResponseDTO;
-import com.ak4n1.terra.api.terra_api.game.entities.AccountGame;
 import com.ak4n1.terra.api.terra_api.game.entities.Character;
 import com.ak4n1.terra.api.terra_api.game.repositories.AccountGameRepository;
 import com.ak4n1.terra.api.terra_api.game.repositories.CharacterRepository;
@@ -11,109 +10,29 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * ========================================
- * SERVICIO DE PERSONAJES - TERRA API
- * ========================================
+ * Implementación del servicio de gestión de personajes.
  * 
- * Este servicio maneja toda la lógica de negocio relacionada con personajes.
- * Incluye métodos optimizados para paginación, estadísticas y consultas eficientes.
+ * <p>Este servicio maneja toda la lógica de negocio relacionada con personajes,
+ * incluyendo métodos optimizados para paginación, estadísticas y consultas eficientes.
+ * Utiliza JOINs directos entre characters y account_game con paginación a nivel de base de datos.
  * 
- * ========================================
- * OPTIMIZACIONES IMPLEMENTADAS
- * ========================================
+ * <p>Características principales:
+ * <ul>
+ *   <li>Consultas optimizadas con paginación a nivel de BD</li>
+ *   <li>Ordenamiento por nivel descendente</li>
+ *   <li>Límite de 5 personajes por defecto para vistas rápidas</li>
+ *   <li>Cálculo eficiente de estadísticas agregadas</li>
+ * </ul>
  * 
- * 1. CONSULTAS OPTIMIZADAS:
- *    - JOIN directo entre characters y account_game
- *    - Paginación a nivel de base de datos
- *    - Ordenamiento por nivel descendente
- * 
- * 2. CACHE Y PERFORMANCE:
- *    - Consultas paginadas para evitar cargar todos los datos
- *    - Estadísticas calculadas eficientemente
- *    - Límite de 5 personajes por defecto
- * 
- * ========================================
- * ESTRUCTURA DE RESPUESTAS PARA ANGULAR
- * ========================================
- * 
- * PAGINACIÓN:
- * {
- *   "content": [CharacterResponseDTO[]],  // Personajes de la página actual
- *   "totalElements": 15,                  // Total en BD
- *   "totalPages": 3,                     // Páginas totales
- *   "currentPage": 0,                    // Página actual (0-based)
- *   "size": 5,                          // Elementos por página
- *   "hasNext": true,                    // Tiene página siguiente
- *   "hasPrevious": false                // Tiene página anterior
- * }
- * 
- * ESTADÍSTICAS:
- * {
- *   "totalCharacters": 15,              // Total de personajes
- *   "totalPages": 3,                    // Páginas (con 5 por página)
- *   "maxLevel": 85,                     // Nivel más alto
- *   "averageLevel": 67.33               // Nivel promedio
- * }
- * 
- * ========================================
- * IMPLEMENTACIÓN EN ANGULAR
- * ========================================
- * 
- * // CharacterService en Angular:
- * interface PaginatedResponse<T> {
- *   content: T[];
- *   totalElements: number;
- *   totalPages: number;
- *   currentPage: number;
- *   size: number;
- *   hasNext: boolean;
- *   hasPrevious: boolean;
- * }
- * 
- * // Método en el servicio Angular:
- * getCharactersPaginated(email: string, page: number, size: number = 5) {
- *   return this.http.get<PaginatedResponse<Character>>(
- *     `${this.apiUrl}/api/game/characters/by-email/paginated?email=${email}&page=${page}&size=${size}`
- *   );
- * }
- * 
- * // En el componente:
- * loadCharacters(page: number = 0) {
- *   this.loading = true;
- *   this.characterService.getCharactersPaginated(this.userEmail, page, 5)
- *     .subscribe({
- *       next: (response) => {
- *         this.characters = response.content;
- *         this.currentPage = response.currentPage;
- *         this.totalPages = response.totalPages;
- *         this.hasNext = response.hasNext;
- *         this.hasPrevious = response.hasPrevious;
- *         this.loading = false;
- *       },
- *       error: (error) => {
- *         console.error('Error:', error);
- *         this.loading = false;
- *       }
- *     });
- * }
- * 
- * // Controles de navegación:
- * nextPage() {
- *   if (this.hasNext) {
- *     this.loadCharacters(this.currentPage + 1);
- *   }
- * }
- * 
- * previousPage() {
- *   if (this.hasPrevious) {
- *     this.loadCharacters(this.currentPage - 1);
- *   }
- * }
+ * @see CharacterService
+ * @see CharacterRepository
+ * @see CharacterResponseDTO
+ * @author ak4n1
+ * @since 1.0
  */
 @Service
 public class CharacterServiceImpl implements CharacterService {
@@ -124,11 +43,23 @@ public class CharacterServiceImpl implements CharacterService {
     @Autowired
     private AccountGameRepository accountGameRepository;
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param accountName Nombre de la cuenta de juego (login)
+     * @return Lista de entidades Character asociadas a la cuenta
+     */
     @Override
     public List<Character> getCharactersByAccountName(String accountName) {
         return characterRepository.findByAccountName(accountName);
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param accountName Nombre de la cuenta de juego (login)
+     * @return Lista de DTOs CharacterResponseDTO con la información de los personajes
+     */
     @Override
     public List<CharacterResponseDTO> getCharactersDTOByAccountName(String accountName) {
         List<Character> characters = characterRepository.findByAccountName(accountName);
@@ -138,14 +69,13 @@ public class CharacterServiceImpl implements CharacterService {
     }
 
     /**
-     * Obtener personajes por email con límite de 5 (optimizado)
+     * {@inheritDoc}
      * 
-     * USO: Para mostrar vista rápida de personajes principales
-     * OPTIMIZACIÓN: Usa JOIN directo en lugar de múltiples consultas
-     * ORDEN: Por nivel descendente (más alto primero)
+     * <p>Este método está optimizado para mostrar una vista rápida de personajes principales.
+     * Utiliza JOIN directo en lugar de múltiples consultas, ordenado por nivel descendente.
      * 
-     * @param email - Email del usuario
-     * @return Lista de máximo 5 personajes
+     * @param email Email del usuario
+     * @return Lista de máximo 5 personajes ordenados por nivel descendente
      */
     @Override
     public List<CharacterResponseDTO> getCharactersByEmail(String email) {
@@ -159,16 +89,16 @@ public class CharacterServiceImpl implements CharacterService {
     }
 
     /**
-     * Obtener personajes con paginación completa
+     * Obtiene personajes con paginación completa.
      * 
-     * USO: Para implementar paginación en el frontend
-     * OPTIMIZACIÓN: Paginación a nivel de base de datos
-     * ORDEN: Por nivel descendente (más alto primero)
+     * <p>Este método está diseñado para implementar paginación en el frontend.
+     * Utiliza paginación a nivel de base de datos para máxima eficiencia,
+     * ordenado por nivel descendente (más alto primero).
      * 
-     * @param email - Email del usuario
-     * @param page - Número de página (0-based)
-     * @param size - Elementos por página
-     * @return Página de personajes con metadatos
+     * @param email Email del usuario
+     * @param page Número de página (0-based)
+     * @param size Elementos por página
+     * @return Página de personajes con metadatos (totalElements, totalPages, etc.)
      */
     public Page<CharacterResponseDTO> getCharactersByEmailWithPagination(String email, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
@@ -178,13 +108,13 @@ public class CharacterServiceImpl implements CharacterService {
     }
 
     /**
-     * Obtener estadísticas de personajes por email
+     * Obtiene estadísticas agregadas de personajes por email.
      * 
-     * USO: Para mostrar dashboard o resumen del usuario
-     * CÁLCULOS: Total, páginas, nivel máximo y promedio
+     * <p>Calcula estadísticas como total de personajes, número de páginas (asumiendo 5 por página),
+     * nivel máximo y nivel promedio. Útil para mostrar dashboards o resúmenes del usuario.
      * 
-     * @param email - Email del usuario
-     * @return Estadísticas calculadas
+     * @param email Email del usuario
+     * @return Estadísticas calculadas (total, páginas, nivel máximo y promedio)
      */
     public CharacterStats getCharacterStatsByEmail(String email) {
         long totalCharacters = characterRepository.countCharactersByEmail(email);
@@ -215,9 +145,11 @@ public class CharacterServiceImpl implements CharacterService {
     }
 
     /**
-     * Clase para estadísticas de personajes
+     * Clase interna para estadísticas de personajes.
      * 
-     * USO: Para transferir estadísticas calculadas al frontend
+     * <p>Usada para transferir estadísticas calculadas al frontend.
+     * 
+     * @since 1.0
      */
     public static class CharacterStats {
         private long totalCharacters;
@@ -240,12 +172,13 @@ public class CharacterServiceImpl implements CharacterService {
     }
 
     /**
-     * Mapear entidad Character a DTO
+     * Mapea una entidad Character a su DTO correspondiente.
      * 
-     * USO: Para convertir datos de la base de datos a formato de respuesta
+     * <p>Convierte todos los campos de la entidad de base de datos al formato
+     * de respuesta para el frontend.
      * 
-     * @param character - Entidad de la base de datos
-     * @return DTO para el frontend
+     * @param character Entidad Character de la base de datos
+     * @return DTO CharacterResponseDTO para el frontend
      */
     private CharacterResponseDTO mapToDTO(Character character) {
         CharacterResponseDTO dto = new CharacterResponseDTO();

@@ -4,8 +4,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Clase simplificada de StatSet del core L2J
- * Solo contiene lo necesario para parsear XMLs de items
+ * Clase simplificada de StatSet del core L2J.
+ * 
+ * <p>Implementación mínima que solo contiene lo necesario para parsear XMLs de items.
+ * Proporciona métodos para almacenar y recuperar valores tipados (String, int, long, boolean)
+ * desde un mapa interno. Es la clase RECOMENDADA para manejar datos parseados de XMLs.
+ * 
+ * @see ItemXmlParser
+ * @author ak4n1
+ * @since 1.0
  */
 public class StatSet {
     private final Map<String, Object> _set = new HashMap<>();

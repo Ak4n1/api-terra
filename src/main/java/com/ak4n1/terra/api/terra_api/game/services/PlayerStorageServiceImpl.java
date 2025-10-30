@@ -16,6 +16,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Implementación del servicio de inventario y almacenamiento de personajes.
+ * 
+ * <p>Este servicio proporciona acceso a los items que poseen los personajes,
+ * incluyendo información completa del catálogo cargada en memoria. Los items
+ * incluyen metadatos como nombre, tipo, icono y estadísticas del catálogo.
+ * 
+ * @see PlayerStorageService
+ * @see ItemRepository
+ * @see CharacterRepository
+ * @see com.ak4n1.terra.api.terra_api.game.l2j.data.ItemTable
+ * @author ak4n1
+ * @since 1.0
+ */
 @Service
 public class PlayerStorageServiceImpl implements PlayerStorageService {
     private static final Logger logger = LoggerFactory.getLogger(PlayerStorageServiceImpl.class);
@@ -31,6 +45,12 @@ public class PlayerStorageServiceImpl implements PlayerStorageService {
 
 
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param playerId ID del personaje (charId)
+     * @return Lista de DTOs con todos los items del personaje
+     */
     @Override
     public List<ItemDTO> getItemsByPlayerId(int playerId) {
         List<Item> items = itemRepository.findByOwnerId(playerId);
@@ -83,7 +103,14 @@ public class PlayerStorageServiceImpl implements PlayerStorageService {
 
 
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param itemId ID del personaje (no utilizado, parámetro mantenido por compatibilidad)
+     * @return Lista con un único DTO informativo sobre el estado del catálogo
+     */
     @Override
+    @Deprecated
     public List<ItemDTO> getTest(int itemId) {
         // ✅ SIMPLIFICADO: Ya no es necesario cargar items manualmente
         logger.info("ℹ️ Los items ahora se cargan automáticamente desde XMLs al iniciar la API");
@@ -104,6 +131,12 @@ public class PlayerStorageServiceImpl implements PlayerStorageService {
         return List.of(responseDto);
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param itemId ID del item (no utilizado, parámetro mantenido por compatibilidad)
+     * @return true si la recarga se completó exitosamente
+     */
     @Override
     public boolean forceReloadItemFromXml(int itemId) {
         // ✅ SIMPLIFICADO: Recarga todo el catálogo

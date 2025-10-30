@@ -1,6 +1,12 @@
 package com.ak4n1.terra.api.terra_api.auth.dto;
 
 
+/**
+ * DTO para petición de login con email y contraseña.
+ * 
+ * @author ak4n1
+ * @since 1.0
+ */
 public class LoginRequestDTO {
     private String email;
     private String password;

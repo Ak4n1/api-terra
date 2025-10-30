@@ -21,12 +21,27 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Filtro de validación JWT que verifica tokens en peticiones autenticadas.
+ * 
+ * <p>Este filtro intercepta las peticiones (excepto rutas públicas), extrae el token
+ * de las cookies, valida su existencia en BD, verifica su expiración y carga el contexto
+ * de seguridad de Spring. Es ejecutado después de JwtAuthenticationFilter.
+ * 
+ * @see BasicAuthenticationFilter
+ * @see com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig
+ * @see com.ak4n1.terra.api.terra_api.security.filters.JwtAuthenticationFilter
+ * @author ak4n1
+ * @since 1.0
+ */
 public class JwtValidationFilter extends BasicAuthenticationFilter {
     
     private static final Logger logger = LoggerFactory.getLogger(JwtValidationFilter.class);
     private final ActiveTokenRepository tokenRepo;
 
-
+    /**
+     * Lista de rutas que no requieren validación de token (rutas públicas).
+     */
     private static final List<String> excludedPaths = List.of(
             "/api/auth/login",
             "/api/auth/logout",
@@ -51,12 +66,26 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
     );
 
 
+    /**
+     * Constructor que inicializa el filtro con las dependencias necesarias.
+     * 
+     * @param authManager Gestor de autenticación
+     * @param tokenRepo Repositorio de tokens activos para validación
+     */
     public JwtValidationFilter(AuthenticationManager authManager,
                                ActiveTokenRepository tokenRepo) {
         super(authManager);
         this.tokenRepo = tokenRepo;
     }
 
+    /**
+     * Determina si el filtro debe procesar esta petición o no.
+     * 
+     * <p>Excluye rutas públicas y peticiones OPTIONS (preflight de CORS).
+     * 
+     * @param request HttpServletRequest a evaluar
+     * @return true si el filtro NO debe procesar la petición, false si debe procesarla
+     */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
@@ -72,6 +101,19 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
         return excluded;
     }
 
+    /**
+     * Valida el token JWT y establece el contexto de seguridad de Spring.
+     * 
+     * <p>Extrae el token de las cookies, verifica su existencia y validez en BD,
+     * valida la expiración, parsea los claims y establece la autenticación en el
+     * SecurityContextHolder.
+     * 
+     * @param req HttpServletRequest con el token en cookie
+     * @param res HttpServletResponse para enviar errores si es necesario
+     * @param chain FilterChain para continuar el procesamiento
+     * @throws IOException si hay error procesando la petición
+     * @throws ServletException si hay error en el servlet
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws IOException, ServletException {
@@ -149,6 +191,16 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
     }
 
 
+    /**
+     * Envía una respuesta de error JSON al cliente.
+     * 
+     * @param res HttpServletResponse para escribir la respuesta
+     * @param status Código de estado HTTP
+     * @param message Mensaje de error para el usuario
+     * @param error Descripción del error
+     * @param code Código de error específico
+     * @throws IOException si hay error escribiendo la respuesta
+     */
     private void sendError(HttpServletResponse res, int status, String message, String error, String code)
             throws IOException {
         res.setStatus(status);
@@ -157,6 +209,12 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
                 Map.of("message", message, "error", error, "code", code));
     }
 
+    /**
+     * Extrae el token JWT de las cookies de la petición.
+     * 
+     * @param request HttpServletRequest con las cookies
+     * @return Token JWT si existe en la cookie "access_token", null si no se encuentra
+     */
     private String obtenerTokenDeCookie(HttpServletRequest request) {
         if (request.getCookies() != null) {
             for (Cookie cookie : request.getCookies()) {

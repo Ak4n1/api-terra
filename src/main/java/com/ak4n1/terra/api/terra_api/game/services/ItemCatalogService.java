@@ -14,8 +14,16 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Servicio para acceder al catálogo de items del juego
- * Actúa como wrapper de ItemTable para la API REST
+ * Servicio principal para acceder al catálogo de items del juego.
+ * 
+ * <p>Este servicio actúa como wrapper de ItemTable para la API REST, proporcionando
+ * métodos para buscar, filtrar y consultar items del catálogo cargado en memoria.
+ * Es el servicio RECOMENDADO para interactuar con el catálogo de items desde los controladores.
+ * 
+ * @see com.ak4n1.terra.api.terra_api.game.l2j.data.ItemTable
+ * @see ItemCatalogDTO
+ * @author ak4n1
+ * @since 1.0
  */
 @Service
 public class ItemCatalogService {
@@ -26,7 +34,10 @@ public class ItemCatalogService {
     private ItemTable itemTable;
     
     /**
-     * Obtiene un item por su ID
+     * Obtiene un item del catálogo por su ID.
+     * 
+     * @param id ID del item a buscar
+     * @return Optional con el DTO del item si existe, vacío si no se encuentra
      */
     public Optional<ItemCatalogDTO> getItemById(int id) {
         ItemTemplate template = itemTable.getTemplate(id);
@@ -38,7 +49,9 @@ public class ItemCatalogService {
     }
     
     /**
-     * Obtiene todos los items del catálogo
+     * Obtiene todos los items disponibles en el catálogo.
+     * 
+     * @return Lista completa de DTOs de todos los items del catálogo
      */
     public List<ItemCatalogDTO> getAllItems() {
         logger.debug("Obteniendo todos los items del catálogo");
@@ -50,7 +63,10 @@ public class ItemCatalogService {
     }
     
     /**
-     * Busca items por nombre
+     * Busca items en el catálogo por nombre (búsqueda parcial case-insensitive).
+     * 
+     * @param name Nombre o fragmento del nombre a buscar
+     * @return Lista de DTOs que coinciden con la búsqueda, lista vacía si el nombre es nulo o en blanco
      */
     public List<ItemCatalogDTO> searchByName(String name) {
         if (name == null || name.isBlank()) {
@@ -67,7 +83,12 @@ public class ItemCatalogService {
     }
     
     /**
-     * Filtra items por tipo
+     * Filtra items del catálogo por tipo de item.
+     * 
+     * <p>Los tipos válidos son: "Weapon", "Armor", "EtcItem"
+     * 
+     * @param type Tipo de item a filtrar (case-insensitive)
+     * @return Lista de DTOs de items que coinciden con el tipo especificado
      */
     public List<ItemCatalogDTO> getItemsByType(String type) {
         logger.debug("Filtrando items por tipo: {}", type);
@@ -80,7 +101,12 @@ public class ItemCatalogService {
     }
     
     /**
-     * Filtra items por grade
+     * Filtra items del catálogo por grade de cristal.
+     * 
+     * <p>Los grades válidos son: "NONE", "D", "C", "B", "A", "S"
+     * 
+     * @param grade Grade de cristal a filtrar (case-insensitive)
+     * @return Lista de DTOs de items que coinciden con el grade especificado
      */
     public List<ItemCatalogDTO> getItemsByGrade(String grade) {
         logger.debug("Filtrando items por grade: {}", grade);
@@ -93,7 +119,12 @@ public class ItemCatalogService {
     }
     
     /**
-     * Recarga el catálogo desde los XMLs
+     * Recarga completamente el catálogo de items desde los archivos XML.
+     * 
+     * <p>Este método limpia el catálogo actual y vuelve a cargar todos los items
+     * desde la ruta configurada. Útil cuando se actualizan los archivos XML.
+     * 
+     * @see com.ak4n1.terra.api.terra_api.game.l2j.data.ItemTable#reload()
      */
     public void reloadCatalog() {
         logger.info("Recargando catálogo de items...");
@@ -102,7 +133,12 @@ public class ItemCatalogService {
     }
     
     /**
-     * Obtiene estadísticas del catálogo
+     * Obtiene estadísticas agregadas del catálogo de items.
+     * 
+     * <p>Las estadísticas incluyen el total de items y el desglose por tipo
+     * (armas, armaduras e items misceláneos).
+     * 
+     * @return Objeto CatalogStats con las estadísticas del catálogo
      */
     public CatalogStats getStats() {
         int totalItems = itemTable.getItemCount();
@@ -116,7 +152,9 @@ public class ItemCatalogService {
     }
     
     /**
-     * Clase interna para estadísticas del catálogo
+     * Clase interna que contiene estadísticas agregadas del catálogo de items.
+     * 
+     * @since 1.0
      */
     public static class CatalogStats {
         private final int totalItems;
