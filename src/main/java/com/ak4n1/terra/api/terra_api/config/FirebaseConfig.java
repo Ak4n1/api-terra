@@ -1,4 +1,4 @@
-package com.ak4n1.terra.api.terra_api;
+package com.ak4n1.terra.api.terra_api.config;
 
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
@@ -22,7 +22,6 @@ public class FirebaseConfig {
     @PostConstruct
     public void initialize() {
         try {
-            // Coloca tu archivo service-account-key.json en src/main/resources
             InputStream serviceAccount = new ClassPathResource("service-account-key.json").getInputStream();
 
             FirebaseOptions options = FirebaseOptions.builder()
@@ -44,3 +43,5 @@ public class FirebaseConfig {
         return FirebaseAuth.getInstance();
     }
 }
+
+

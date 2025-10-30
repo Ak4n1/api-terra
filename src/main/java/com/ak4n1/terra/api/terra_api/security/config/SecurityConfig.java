@@ -1,8 +1,11 @@
 package com.ak4n1.terra.api.terra_api.security.config;
 
 import com.ak4n1.terra.api.terra_api.auth.repositories.*;
+import com.ak4n1.terra.api.terra_api.auth.repositories.RefreshTokenRepository;
 import com.ak4n1.terra.api.terra_api.security.filters.*;
 import com.ak4n1.terra.api.terra_api.security.filters.JwtAuthenticationFilter;
+import com.ak4n1.terra.api.terra_api.security.filters.RateLimitFilter;
+import com.ak4n1.terra.api.terra_api.security.filters.SecurityHeadersFilter;
 import org.springframework.context.annotation.*;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -39,20 +42,29 @@ import java.util.List;
 public class SecurityConfig {
 
     private final ActiveTokenRepository activeTokenRepo;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final AccountMasterRepository userRepo;
     private final RecentActivityRepository activityRepository;
+    private final RateLimitFilter rateLimitFilter;
+    private final SecurityHeadersFilter securityHeadersFilter;
 
     /**
      * Constructor que recibe las dependencias necesarias para la configuración de seguridad.
      * 
-     * @param t Repositorio de tokens activos
+     * @param t Repositorio de tokens activos (access tokens)
+     * @param rt Repositorio de refresh tokens
      * @param u Repositorio de usuarios (AccountMaster)
      * @param r Repositorio de actividad reciente
      */
-    public SecurityConfig(ActiveTokenRepository t, AccountMasterRepository u, RecentActivityRepository r) {
+    public SecurityConfig(ActiveTokenRepository t, RefreshTokenRepository rt, AccountMasterRepository u, 
+                         RecentActivityRepository r, RateLimitFilter rateLimitFilter, 
+                         SecurityHeadersFilter securityHeadersFilter) {
         this.activeTokenRepo = t;
+        this.refreshTokenRepository = rt;
         this.userRepo = u;
         this.activityRepository = r;
+        this.rateLimitFilter = rateLimitFilter;
+        this.securityHeadersFilter = securityHeadersFilter;
     }
 
     /**
@@ -92,13 +104,20 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    AuthenticationManager authManager) throws Exception {
 
-        var jwtAuthFilter = new JwtAuthenticationFilter(authManager, activeTokenRepo, userRepo, activityRepository);
-        var jwtValFilter = new JwtValidationFilter(authManager, activeTokenRepo);
+        var jwtAuthFilter = new JwtAuthenticationFilter(authManager, activeTokenRepo, refreshTokenRepository, userRepo, activityRepository);
+        var jwtValFilter = new JwtValidationFilter(authManager, activeTokenRepo, userRepo);
 
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // Deshabilitamos CSRF porque JWT stateless con cookie no usa el token de Spring
                 .csrf(csrf -> csrf.disable())
+                
+                // Security Headers: protecciones adicionales HTTP
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.deny()) // Previene clickjacking (X-Frame-Options: DENY)
+                        .contentTypeOptions(contentType -> {}) // X-Content-Type-Options: nosniff
+                        .httpStrictTransportSecurity(hsts -> hsts.disable()) // Solo en producción con HTTPS
+                )
 
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
@@ -113,6 +132,7 @@ public class SecurityConfig {
                                 "/api/auth/resend-verification",
                                 "/api/auth/google/login",
                                 "/api/auth/refresh",
+                                "/api/test/**",
                                 "/api/kick/channels/**",
                                 "/api/game/ranking/top-pvp",
                                 "/api/game/ranking/top-pk",
@@ -150,7 +170,9 @@ public class SecurityConfig {
 
                 )
 
-                // Filtros JWT
+                // Filtros de seguridad en orden
+                .addFilterBefore(securityHeadersFilter, UsernamePasswordAuthenticationFilter.class) // Security Headers (muy primero)
+                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class) // Rate Limiting
                 .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class) // JWT Authentication (login)
                 .addFilterAfter(jwtValFilter, JwtAuthenticationFilter.class); // JWT Validation (después del login)
 

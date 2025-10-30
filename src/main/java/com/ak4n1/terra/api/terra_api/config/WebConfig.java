@@ -1,4 +1,4 @@
-package com.ak4n1.terra.api.terra_api;
+package com.ak4n1.terra.api.terra_api.config;
 
 import com.ak4n1.terra.api.terra_api.auth.interceptors.ActivityInterceptor;
 import org.springframework.context.annotation.Configuration;
@@ -18,3 +18,5 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(activityInterceptor);
     }
 }
+
+

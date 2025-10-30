@@ -13,6 +13,8 @@ API REST que proporciona funcionalidades de autenticación, gestión de cuentas 
 ```
 com.ak4n1.terra.api.terra_api/
 │
+├── config/                        # Configuración general (FirebaseConfig, WebConfig)
+│
 ├── auth/                          # Autenticación y Autorización
 │   ├── controllers/               # Endpoints de autenticación
 │   ├── dto/                      # Data Transfer Objects
@@ -29,7 +31,7 @@ com.ak4n1.terra.api.terra_api/
 │   ├── exceptions/               # Excepciones específicas del juego
 │   ├── repositories/             # Repositorios JPA del juego
 │   ├── services/                 # Lógica de negocio del juego
-│   └── utils/                    # Utilidades del juego (L2ClientPasswordEncoder, ItemParser, etc.)
+│   └── l2j/                      # Integración L2J (parsers XML, ItemTable en memoria, utilidades)
 │
 ├── payments/                     # Integración con Mercado Pago
 │   ├── config/                   # Configuración de Mercado Pago
@@ -40,9 +42,18 @@ com.ak4n1.terra.api.terra_api/
 │   └── services/                 # Lógica de negocio de pagos
 │
 ├── security/                     # Configuración de Seguridad
-│   ├── config/                   # SecurityConfig, TokenJwtConfig
-│   ├── filters/                  # JWT filters (Authentication, Validation)
-│   └── services/                 # JpaUserDetailsService
+│   ├── config/                   # SecurityConfig, TokenJwtConfig, RateLimitConfig
+│   ├── filters/                  # JwtAuthenticationFilter, JwtValidationFilter, RateLimitFilter, SecurityHeadersFilter
+│   └── services/                 # RateLimitService, servicios auxiliares
+│
+├── streaming/                    # Módulo de streamers (ROLE_STREAMER)
+│   ├── controllers/              # Endpoints públicos (KickController, StreamersPublicController)
+│   ├── services/                 # Lógica de streamers (visibilidad, futuras bonificaciones)
+│   ├── clients/
+│   │   └── kick/                 # Cliente HTTP para Kick (DTOs crudos)
+│   ├── dto/                      # DTOs expuestos al frontend
+│   ├── admin/                    # Gestión admin del rol (approve/revoke)
+│   └── config/                   # Propiedades/caché del módulo
 │
 ├── notifications/                # Sistema de Notificaciones
 │   ├── builders/                 # EmailContent (templates HTML)
@@ -85,7 +96,7 @@ com.ak4n1.terra.api.terra_api/
 - Top Clanes
 - Estadísticas del servidor
 
-### Mercado Offline
+### Mercado Offline (Solo lectura las transacciones se hacen dentro del juego)
 - Consulta de tiendas offline
 - Detalles de items en venta
 - Búsqueda por personaje

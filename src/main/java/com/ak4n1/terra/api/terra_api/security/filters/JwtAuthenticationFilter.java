@@ -3,11 +3,13 @@ package com.ak4n1.terra.api.terra_api.security.filters;
 import com.ak4n1.terra.api.terra_api.auth.entities.AccountMaster;
 import com.ak4n1.terra.api.terra_api.auth.entities.ActiveToken;
 import com.ak4n1.terra.api.terra_api.auth.entities.RecentActivity;
+import com.ak4n1.terra.api.terra_api.auth.entities.RefreshToken;
 import com.ak4n1.terra.api.terra_api.auth.exceptions.EmailNotVerifiedException;
 import com.ak4n1.terra.api.terra_api.auth.exceptions.UserDisabledException;
 import com.ak4n1.terra.api.terra_api.auth.repositories.ActiveTokenRepository;
 import com.ak4n1.terra.api.terra_api.auth.repositories.AccountMasterRepository;
 import com.ak4n1.terra.api.terra_api.auth.repositories.RecentActivityRepository;
+import com.ak4n1.terra.api.terra_api.auth.repositories.RefreshTokenRepository;
 import com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
@@ -52,6 +54,7 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
 
     private final AuthenticationManager authManager;
     private final ActiveTokenRepository tokenRepo;
+    private final RefreshTokenRepository refreshTokenRepo;
     private final AccountMasterRepository userRepo;
     private final RecentActivityRepository activityRepo;
 
@@ -61,16 +64,19 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
      * <p>Configura el filtro para procesar peticiones a "/api/auth/login".
      * 
      * @param authManager Gestor de autenticación
-     * @param tokenRepo Repositorio de tokens activos
+     * @param tokenRepo Repositorio de tokens activos (access tokens)
+     * @param refreshTokenRepo Repositorio de refresh tokens
      * @param userRepo Repositorio de usuarios
      * @param activityRepo Repositorio de actividad reciente
      */
     public JwtAuthenticationFilter(AuthenticationManager authManager,
                                    ActiveTokenRepository tokenRepo,
+                                   RefreshTokenRepository refreshTokenRepo,
                                    AccountMasterRepository userRepo,
                                    RecentActivityRepository activityRepo) {
         this.authManager = authManager;
         this.tokenRepo = tokenRepo;
+        this.refreshTokenRepo = refreshTokenRepo;
         this.userRepo = userRepo;
         this.activityRepo = activityRepo;
         setFilterProcessesUrl("/api/auth/login");
@@ -154,11 +160,17 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                 // Establecer el tipo de dispositivo
                 String deviceType = "WEB";
                 
-                // Eliminar tokens del mismo tipo para este usuario
+                // Eliminar access tokens del mismo tipo para este usuario
                 List<ActiveToken> existingTokens = tokenRepo.findByAccountMaster_Email(email);
                 existingTokens.stream()
                     .filter(token -> deviceType.equals(token.getDeviceType()))
                     .forEach(token -> tokenRepo.delete(token));
+                
+                // Eliminar refresh tokens del mismo tipo para este usuario
+                List<RefreshToken> existingRefreshTokens = refreshTokenRepo.findByAccountMaster_Email(email);
+                existingRefreshTokens.stream()
+                    .filter(token -> deviceType.equals(token.getDeviceType()))
+                    .forEach(token -> refreshTokenRepo.delete(token));
                 
                 // Generar token inicial
                 String token = Jwts.builder()
@@ -204,6 +216,7 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                 // Configurar cookie con el token generado
                 Cookie cookie = new Cookie("access_token", token);
                 cookie.setHttpOnly(true);
+                cookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
                 cookie.setPath("/");
                 cookie.setMaxAge((int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
                 res.addCookie(cookie);
@@ -217,8 +230,19 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                         .signWith(TokenJwtConfig.SECRET_KEY)
                         .compact();
 
+                // Guardar refresh token en BD
+                RefreshToken refreshTokenEntity = new RefreshToken();
+                refreshTokenEntity.setAccountMaster(user);
+                refreshTokenEntity.setToken(refreshToken);
+                refreshTokenEntity.setCreatedAt(new Date());
+                refreshTokenEntity.setExpiresAt(new Date(System.currentTimeMillis() + TokenJwtConfig.REFRESH_TOKEN_EXPIRATION));
+                refreshTokenEntity.setDeviceType(deviceType);
+                refreshTokenEntity.setRevoked(false);
+                refreshTokenRepo.save(refreshTokenEntity);
+
                 Cookie refreshCookie = new Cookie("refresh_token", refreshToken);
                 refreshCookie.setHttpOnly(true);
+                refreshCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
                 refreshCookie.setPath("/");
                 refreshCookie.setMaxAge((int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
                 res.addCookie(refreshCookie);
@@ -252,6 +276,7 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                     // Configurar cookie con el token de retry
                     Cookie cookie = new Cookie("access_token", retryToken);
                     cookie.setHttpOnly(true);
+                    cookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
                     cookie.setPath("/");
                     cookie.setMaxAge((int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
                     res.addCookie(cookie);
@@ -265,8 +290,19 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                             .signWith(TokenJwtConfig.SECRET_KEY)
                             .compact();
 
+                    // Guardar refresh token en BD
+                    RefreshToken refreshTokenEntity = new RefreshToken();
+                    refreshTokenEntity.setAccountMaster(user);
+                    refreshTokenEntity.setToken(refreshToken);
+                    refreshTokenEntity.setCreatedAt(new Date());
+                    refreshTokenEntity.setExpiresAt(new Date(System.currentTimeMillis() + TokenJwtConfig.REFRESH_TOKEN_EXPIRATION));
+                    refreshTokenEntity.setDeviceType("WEB");
+                    refreshTokenEntity.setRevoked(false);
+                    refreshTokenRepo.save(refreshTokenEntity);
+
                     Cookie refreshCookie = new Cookie("refresh_token", refreshToken);
                     refreshCookie.setHttpOnly(true);
+                    refreshCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
                     refreshCookie.setPath("/");
                     refreshCookie.setMaxAge((int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
                     res.addCookie(refreshCookie);

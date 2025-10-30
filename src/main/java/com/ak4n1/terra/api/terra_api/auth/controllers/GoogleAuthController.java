@@ -4,6 +4,7 @@ import com.ak4n1.terra.api.terra_api.auth.entities.*;
 import com.ak4n1.terra.api.terra_api.auth.repositories.AccountMasterRepository;
 import com.ak4n1.terra.api.terra_api.auth.repositories.ActiveTokenRepository;
 import com.ak4n1.terra.api.terra_api.auth.repositories.RecentActivityRepository;
+import com.ak4n1.terra.api.terra_api.auth.repositories.RefreshTokenRepository;
 import com.ak4n1.terra.api.terra_api.auth.repositories.RoleRepository;
 import com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig;
 import com.google.firebase.auth.FirebaseAuth;
@@ -24,6 +25,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import com.ak4n1.terra.api.terra_api.auth.entities.RefreshToken;
 
 /**
  * Controlador REST para autenticación con Google OAuth.
@@ -45,6 +47,7 @@ public class GoogleAuthController {
 
     private final AccountMasterRepository accountMasterRepository;
     private final ActiveTokenRepository activeTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final RecentActivityRepository recentActivityRepository;
     private final FirebaseAuth firebaseAuth;
   
@@ -55,16 +58,19 @@ public class GoogleAuthController {
      * Constructor que recibe las dependencias necesarias para la autenticación con Google.
      * 
      * @param accountMasterRepository Repositorio de usuarios
-     * @param activeTokenRepository Repositorio de tokens activos
+     * @param activeTokenRepository Repositorio de tokens activos (access tokens)
+     * @param refreshTokenRepository Repositorio de refresh tokens
      * @param recentActivityRepository Repositorio de actividad reciente
      * @param firebaseAuth Cliente de Firebase Authentication
      */
     public GoogleAuthController(AccountMasterRepository accountMasterRepository,
             ActiveTokenRepository activeTokenRepository,
+            RefreshTokenRepository refreshTokenRepository,
             RecentActivityRepository recentActivityRepository,
             FirebaseAuth firebaseAuth) {
         this.accountMasterRepository = accountMasterRepository;
         this.activeTokenRepository = activeTokenRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.recentActivityRepository = recentActivityRepository;
         this.firebaseAuth = firebaseAuth;
 
@@ -127,8 +133,35 @@ public class GoogleAuthController {
             activeToken.setToken(token);
             activeToken.setCreatedAt(new Date());
             activeToken.setExpiresAt(new Date(System.currentTimeMillis() + TokenJwtConfig.ACCESS_TOKEN_EXPIRATION));
-
+            activeToken.setDeviceType("WEB");
             activeTokenRepository.save(activeToken);
+
+            // Generar y guardar refresh token
+            String refreshToken = Jwts.builder()
+                    .setSubject(email)
+                    .claim("type", "refresh")
+                    .claim("authMethod", "google")
+                    .claim("timestamp", System.currentTimeMillis())
+                    .setExpiration(new Date(System.currentTimeMillis() + TokenJwtConfig.REFRESH_TOKEN_EXPIRATION))
+                    .signWith(TokenJwtConfig.SECRET_KEY)
+                    .compact();
+
+            // Eliminar refresh tokens previos del mismo usuario y dispositivo
+            String deviceType = "WEB";
+            List<RefreshToken> existingRefreshTokens = refreshTokenRepository.findByAccountMaster_Email(email);
+            existingRefreshTokens.stream()
+                .filter(rt -> deviceType.equals(rt.getDeviceType()))
+                .forEach(rt -> refreshTokenRepository.delete(rt));
+
+            // Guardar refresh token en BD
+            RefreshToken refreshTokenEntity = new RefreshToken();
+            refreshTokenEntity.setAccountMaster(user);
+            refreshTokenEntity.setToken(refreshToken);
+            refreshTokenEntity.setCreatedAt(new Date());
+            refreshTokenEntity.setExpiresAt(new Date(System.currentTimeMillis() + TokenJwtConfig.REFRESH_TOKEN_EXPIRATION));
+            refreshTokenEntity.setDeviceType(deviceType);
+            refreshTokenEntity.setRevoked(false);
+            refreshTokenRepository.save(refreshTokenEntity);
 
             // Registrar actividad
             RecentActivity activity = new RecentActivity();
@@ -138,25 +171,33 @@ public class GoogleAuthController {
             activity.setAction("Google Login");
             recentActivityRepository.save(activity);
 
-            // Configurar cookie
+            // Configurar cookie access token
             Cookie cookie = new Cookie("access_token", token);
             cookie.setHttpOnly(true);
+            cookie.setSecure(com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig.USE_SECURE_COOKIES);
             cookie.setPath("/");
             cookie.setMaxAge((int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
-
             httpResponse.addCookie(cookie);
 
+            // Configurar cookie refresh token
+            Cookie refreshCookie = new Cookie("refresh_token", refreshToken);
+            refreshCookie.setHttpOnly(true);
+            refreshCookie.setSecure(com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig.USE_SECURE_COOKIES);
+            refreshCookie.setPath("/");
+            refreshCookie.setMaxAge((int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
+            httpResponse.addCookie(refreshCookie);
+
             return ResponseEntity.ok(Map.of(
-                    "message", "Autenticación exitosa con Google",
+                    "message", "Authentication successful with Google",
                     "email", email,
                     "name", name));
 
         } catch (FirebaseAuthException e) {
             logger.error("❌ [GOOGLE AUTH] Error verificando token: {}", e.getMessage(), e);
-            return ResponseEntity.status(401).body(Map.of("error", "Token de Google inválido"));
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid Google token"));
         } catch (Exception e) {
             logger.error("❌ [GOOGLE AUTH] Error interno: {}", e.getMessage(), e);
-            return ResponseEntity.status(500).body(Map.of("error", "Error interno del servidor"));
+            return ResponseEntity.status(500).body(Map.of("error", "Internal server error"));
         }
     }
 

@@ -3,6 +3,7 @@ package com.ak4n1.terra.api.terra_api.security.config;
 import javax.crypto.SecretKey;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +27,18 @@ public class TokenJwtConfig {
     @Value("${jwt.secret}")
     private String secretString;
     
+    private final Environment environment;
+    
+    /**
+     * Flag estático que indica si las cookies deben tener el atributo Secure.
+     * Solo true en producción (cuando SSL está habilitado o profile es 'prod').
+     */
+    public static boolean USE_SECURE_COOKIES = false;
+    
+    public TokenJwtConfig(Environment environment) {
+        this.environment = environment;
+    }
+    
     /**
      * Clave secreta estática para firmar y validar tokens JWT.
      * Se inicializa automáticamente al iniciar la aplicación.
@@ -36,11 +49,16 @@ public class TokenJwtConfig {
      * Inicializa la clave secreta desde la configuración al iniciar Spring Boot.
      * 
      * <p>Convierte el string secreto desde application.properties en una SecretKey
-     * usando el algoritmo HMAC SHA.
+     * usando el algoritmo HMAC SHA. También configura si se deben usar cookies Secure.
      */
     @PostConstruct
     public void init() {
         SECRET_KEY = Keys.hmacShaKeyFor(secretString.getBytes(StandardCharsets.UTF_8));
+        
+        // Determinar si usar cookies Secure: solo en producción (perfil 'prod' o SSL habilitado)
+        boolean isProd = environment.matchesProfiles("prod");
+        boolean sslEnabled = environment.getProperty("server.ssl.enabled", Boolean.class, false);
+        USE_SECURE_COOKIES = isProd || sslEnabled;
     }
 
     /**

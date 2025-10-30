@@ -3,6 +3,7 @@ package com.ak4n1.terra.api.terra_api.exceptions;
 import com.ak4n1.terra.api.terra_api.auth.exceptions.EmailAlreadyExistsException;
 import com.ak4n1.terra.api.terra_api.auth.exceptions.EmailNotVerifiedException;
 import com.ak4n1.terra.api.terra_api.auth.exceptions.InvalidCredentialsException;
+import com.ak4n1.terra.api.terra_api.auth.exceptions.RefreshTokenReusedException;
 import com.ak4n1.terra.api.terra_api.auth.exceptions.TokenExpiredException;
 import com.ak4n1.terra.api.terra_api.auth.exceptions.UserDisabledException;
 import com.ak4n1.terra.api.terra_api.auth.exceptions.UserNotFoundException;
@@ -103,6 +104,19 @@ public class GlobalExceptionHandler {
         error.put("message", ex.getMessage());
         error.put("error", "USER_DISABLED");
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
+    /**
+     * Maneja la excepción cuando se intenta reutilizar un refresh token
+     */
+    @ExceptionHandler(RefreshTokenReusedException.class)
+    public ResponseEntity<Map<String, Object>> handleRefreshTokenReused(RefreshTokenReusedException ex) {
+        logger.warn("❌ [EXCEPTION] Refresh token reusado: {}", ex.getMessage());
+        Map<String, Object> error = new HashMap<>();
+        error.put("success", false);
+        error.put("message", "Refresh token has already been used and cannot be reused");
+        error.put("error", "REFRESH_TOKEN_REUSED");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
     }
 
     // ============ GAME EXCEPTIONS ============

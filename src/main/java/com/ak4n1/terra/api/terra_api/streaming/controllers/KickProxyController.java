@@ -1,4 +1,4 @@
-package com.ak4n1.terra.api.terra_api.controllers;
+package com.ak4n1.terra.api.terra_api.streaming.controllers;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
@@ -57,7 +57,7 @@ public class KickProxyController {
         ResponseEntity<String> apiResp = rest.exchange(apiUrl, HttpMethod.GET, apiReq, String.class);
 
         // ⬇️ Mostramos la respuesta en consola
-        logger.debug("📺 [KICK API] Respuesta Kick API: {}", apiResp.getBody());
+        logger.debug("\uD83D\uDCFA [KICK API] Respuesta Kick API: {}", apiResp.getBody());
 
         return ResponseEntity.status(apiResp.getStatusCode()).body(apiResp.getBody());
     }
@@ -77,3 +77,5 @@ public class KickProxyController {
         }
     }
 }
+
+

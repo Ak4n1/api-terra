@@ -2,7 +2,10 @@ package com.ak4n1.terra.api.terra_api.security.filters;
 
 import com.ak4n1.terra.api.terra_api.auth.entities.AccountMaster;
 import com.ak4n1.terra.api.terra_api.auth.entities.ActiveToken;
+import com.ak4n1.terra.api.terra_api.auth.exceptions.EmailNotVerifiedException;
+import com.ak4n1.terra.api.terra_api.auth.exceptions.UserDisabledException;
 import com.ak4n1.terra.api.terra_api.auth.repositories.ActiveTokenRepository;
+import com.ak4n1.terra.api.terra_api.auth.repositories.AccountMasterRepository;
 import com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.*;
@@ -38,6 +41,7 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
     
     private static final Logger logger = LoggerFactory.getLogger(JwtValidationFilter.class);
     private final ActiveTokenRepository tokenRepo;
+    private final AccountMasterRepository accountMasterRepository;
 
     /**
      * Lista de rutas que no requieren validación de token (rutas públicas).
@@ -52,6 +56,7 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
             "/api/auth/verify-email",
             "/api/auth/google/login",
             "/api/auth/refresh",
+            "/api/test",
             "/api/kick/channels",
             "/api/game/ranking/top-pvp",
             "/api/game/ranking/top-pk",
@@ -71,11 +76,14 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
      * 
      * @param authManager Gestor de autenticación
      * @param tokenRepo Repositorio de tokens activos para validación
+     * @param accountMasterRepository Repositorio de usuarios para validar estado
      */
     public JwtValidationFilter(AuthenticationManager authManager,
-                               ActiveTokenRepository tokenRepo) {
+                               ActiveTokenRepository tokenRepo,
+                               AccountMasterRepository accountMasterRepository) {
         super(authManager);
         this.tokenRepo = tokenRepo;
+        this.accountMasterRepository = accountMasterRepository;
     }
 
     /**
@@ -119,7 +127,6 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
             throws IOException, ServletException {
 
         String token = obtenerTokenDeCookie(req);
-        String deviceId = req.getHeader("X-Device-Id");
 
         if (token == null || token.isBlank()) {
             logger.warn("❌ [JWT] No se recibió token.");
@@ -128,6 +135,16 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
         }
 
         try {
+            // PRIMERO: Validar JWT (más rápido, evita queries innecesarias si el JWT es inválido)
+            Claims claims = Jwts.parser()
+                    .setSigningKey(TokenJwtConfig.SECRET_KEY)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+
+            String email = claims.getSubject();
+
+            // SEGUNDO: Verificar en BD (solo si JWT es válido)
             Optional<ActiveToken> activeTokenOpt = tokenRepo.findByToken(token);
 
             if (activeTokenOpt.isEmpty()) {
@@ -137,20 +154,33 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
 
             ActiveToken activeToken = activeTokenOpt.get();
 
-    
-
+            // Validar expiración en BD
             if (activeToken.getExpiresAt().before(new Date())) {
                 logger.warn("⏰ [JWT] Token expirado. Eliminando...");
                 tokenRepo.delete(activeToken);
                 throw new JwtException("TOKEN_EXPIRED");
             }
 
-            // Validación del JWT y carga del contexto
-            Claims claims = Jwts.parser()
-                    .setSigningKey(TokenJwtConfig.SECRET_KEY)
-                    .build()
-                    .parseClaimsJws(token)
-                    .getBody();
+            // TERCERO: Validar estado del usuario (SECURITY FIX)
+            AccountMaster user = activeToken.getAccountMaster();
+            if (user == null) {
+                logger.warn("❌ [JWT] Usuario asociado al token no encontrado.");
+                throw new JwtException("USER_NOT_FOUND");
+            }
+
+            if (!user.isEnabled()) {
+                logger.warn("❌ [JWT] Usuario deshabilitado: {}", email);
+                // Revocar tokens del usuario
+                tokenRepo.delete(activeToken);
+                throw new UserDisabledException("Usuario deshabilitado");
+            }
+
+            if (!user.isEmailVerified()) {
+                logger.warn("❌ [JWT] Email no verificado: {}", email);
+                // Revocar tokens del usuario
+                tokenRepo.delete(activeToken);
+                throw new EmailNotVerifiedException("Email no verificado");
+            }
 
             List<String> roles = (List<String>) claims.get("authorities");
             logger.debug("👮 [JWT] Roles del usuario: {}", roles);
@@ -163,6 +193,12 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
             logger.debug("✅ [JWT] Contexto de seguridad seteado correctamente.");
             chain.doFilter(req, res);
 
+        } catch (UserDisabledException e) {
+            logger.error("❌ [JWT ERROR] Usuario deshabilitado: {}", e.getMessage());
+            sendError(res, HttpServletResponse.SC_FORBIDDEN, "User disabled", "Account suspended", "USER_DISABLED");
+        } catch (EmailNotVerifiedException e) {
+            logger.error("❌ [JWT ERROR] Email no verificado: {}", e.getMessage());
+            sendError(res, HttpServletResponse.SC_FORBIDDEN, "Email not verified", "Verify your email to continue", "EMAIL_NOT_VERIFIED");
         } catch (JwtException e) {
             String code = e.getMessage();
             String message;
@@ -170,17 +206,17 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
 
             switch (code) {
                 case "TOKEN_INACTIVE" -> {
-                    message = "El token no está activo";
-                    error = "Token inválido o deshabilitado";
+                    message = "Token is not active";
+                    error = "Token invalid or disabled";
                 }
                 case "TOKEN_EXPIRED" -> {
-                    message = "El token expiró";
-                    error = "Sesión caducada";
+                    message = "Token expired";
+                    error = "Session expired";
                 }
 
                 default -> {
-                    message = "El token es inválido";
-                    error = "No se pudo validar el token";
+                    message = "Token is invalid";
+                    error = "Could not validate token";
                     code = "INVALID_TOKEN";
                 }
             }

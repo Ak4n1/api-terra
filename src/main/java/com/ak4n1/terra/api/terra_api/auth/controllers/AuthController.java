@@ -5,15 +5,23 @@ import com.ak4n1.terra.api.terra_api.auth.dto.RegisterRequestDTO;
 import com.ak4n1.terra.api.terra_api.auth.dto.RegisterResponseDTO;
 import com.ak4n1.terra.api.terra_api.auth.entities.AccountMaster;
 import com.ak4n1.terra.api.terra_api.auth.entities.RecentActivity;
+import com.ak4n1.terra.api.terra_api.auth.entities.RefreshToken;
+import com.ak4n1.terra.api.terra_api.auth.exceptions.EmailNotVerifiedException;
+import com.ak4n1.terra.api.terra_api.auth.exceptions.RefreshTokenReusedException;
+import com.ak4n1.terra.api.terra_api.auth.exceptions.UserDisabledException;
 import com.ak4n1.terra.api.terra_api.auth.repositories.AccountMasterRepository;
 import com.ak4n1.terra.api.terra_api.auth.repositories.ActiveTokenRepository;
 import com.ak4n1.terra.api.terra_api.auth.repositories.RecentActivityRepository;
+import com.ak4n1.terra.api.terra_api.auth.repositories.RefreshTokenRepository;
 import com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig;
 import com.ak4n1.terra.api.terra_api.auth.services.AuthService;
 import com.ak4n1.terra.api.terra_api.auth.entities.ActiveToken;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -51,11 +59,16 @@ import io.jsonwebtoken.JwtException;
 @RequestMapping("/api/auth")
 public class AuthController {
 
+    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
+
     @Autowired
     private AuthService authService;
 
     @Autowired
     private ActiveTokenRepository activeTokenRepository;
+
+    @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
 
     @Autowired
     private AccountMasterRepository accountMasterRepository;
@@ -121,25 +134,39 @@ public class AuthController {
     public ResponseEntity<?> logout(@CookieValue(value = "access_token", required = false) String token,
             @CookieValue(value = "refresh_token", required = false) String refreshToken,
             HttpServletResponse response) {
+        // Eliminar access token de BD
         if (token != null) {
-            activeTokenRepository.deleteByToken(token); // borrás el token activo en BD
+            activeTokenRepository.deleteByToken(token);
+            logger.debug("🗑️ [LOGOUT] Access token eliminado de BD");
         }
 
-        // Borrás la cookie access_token en el cliente
+        // Revocar refresh token de BD
+        if (refreshToken != null) {
+            refreshTokenRepository.findByToken(refreshToken).ifPresent(refreshTokenEntity -> {
+                refreshTokenEntity.setRevoked(true);
+                refreshTokenRepository.save(refreshTokenEntity);
+                logger.debug("🗑️ [LOGOUT] Refresh token revocado en BD");
+            });
+        }
+
+        // Eliminar cookie access_token en el cliente
         Cookie accessCookie = new Cookie("access_token", null);
         accessCookie.setHttpOnly(true);
+        accessCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
         accessCookie.setPath("/");
         accessCookie.setMaxAge(0); // expira ya
         response.addCookie(accessCookie);
 
-        // Borrás la cookie refresh_token en el cliente
+        // Eliminar cookie refresh_token en el cliente
         Cookie refreshCookie = new Cookie("refresh_token", null);
         refreshCookie.setHttpOnly(true);
+        refreshCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
         refreshCookie.setPath("/");
         refreshCookie.setMaxAge(0); // expira ya
         response.addCookie(refreshCookie);
 
-        return ResponseEntity.ok(Map.of("message", "Logout exitoso"));
+        logger.info("✅ [LOGOUT] Logout exitoso");
+        return ResponseEntity.ok(Map.of("message", "Logout successful"));
     }
 
     /**
@@ -265,19 +292,22 @@ public class AuthController {
      * y como cookie. Elimina los tokens antiguos del usuario.
      * 
      * @param refreshToken Refresh token desde la cookie
+     * @param request HttpServletRequest para obtener IP del cliente
      * @param response HttpServletResponse para configurar la nueva cookie de access token
      * @return ResponseEntity con el resultado (OK si se renovó, UNAUTHORIZED si el refresh token es inválido o expiró)
      */
     @PostMapping("/refresh")
+    @Transactional
     public ResponseEntity<?> refreshToken(@CookieValue(value = "refresh_token", required = false) String refreshToken,
+            HttpServletRequest request,
             HttpServletResponse response) {
         if (refreshToken == null || refreshToken.isBlank()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("message", "Refresh token no proporcionado", "error", "REFRESH_TOKEN_MISSING"));
+                    .body(Map.of("message", "Refresh token not provided", "error", "REFRESH_TOKEN_MISSING"));
         }
 
         try {
-            // Validar refresh token
+            // Validar firma JWT del refresh token
             Claims claims = Jwts.parser()
                     .setSigningKey(TokenJwtConfig.SECRET_KEY)
                     .build()
@@ -285,17 +315,73 @@ public class AuthController {
                     .getBody();
 
             String email = claims.getSubject();
+            
+            // VALIDACIÓN EN BD: Buscar refresh token en base de datos
+            Optional<RefreshToken> refreshTokenOpt = refreshTokenRepository.findByToken(refreshToken);
+            
+            if (refreshTokenOpt.isEmpty()) {
+                logger.warn("❌ [REFRESH] Refresh token no encontrado en BD: {}", email);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("message", "Refresh token invalid or revoked", "error", "REFRESH_TOKEN_INVALID"));
+            }
+
+            RefreshToken refreshTokenEntity = refreshTokenOpt.get();
+            
+            // Validar que no esté revocado (ANTES de hacer cualquier cambio)
+            if (refreshTokenEntity.isRevoked()) {
+                logger.warn("❌ [REFRESH] Refresh token revocado (reuso detectado): {}", email);
+                throw new RefreshTokenReusedException("Refresh token ya fue usado y no puede reutilizarse");
+            }
+            
+            // Validar que no esté expirado (validación en BD además de JWT)
+            if (refreshTokenEntity.getExpiresAt().before(new Date())) {
+                logger.warn("⏰ [REFRESH] Refresh token expirado en BD: {}", email);
+                refreshTokenRepository.delete(refreshTokenEntity);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("message", "Refresh token expired", "error", "REFRESH_TOKEN_EXPIRED"));
+            }
+
             Optional<AccountMaster> userOpt = accountMasterRepository.findByEmail(email);
 
             if (userOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(Map.of("message", "Usuario no encontrado", "error", "USER_NOT_FOUND"));
+                        .body(Map.of("message", "User not found", "error", "USER_NOT_FOUND"));
             }
 
             AccountMaster user = userOpt.get();
+            
+            // SECURITY FIX: Validar estado del usuario
+            if (!user.isEnabled()) {
+                logger.warn("❌ [REFRESH] Usuario deshabilitado: {}", email);
+                // Revocar todos los tokens del usuario
+                refreshTokenRepository.revokeAllByUserId(user.getId());
+                activeTokenRepository.deleteOldTokensByUserId(user.getId());
+                throw new UserDisabledException("Cuenta deshabilitada");
+            }
+
+            if (!user.isEmailVerified()) {
+                logger.warn("❌ [REFRESH] Email no verificado: {}", email);
+                // Revocar todos los tokens del usuario
+                refreshTokenRepository.revokeAllByUserId(user.getId());
+                activeTokenRepository.deleteOldTokensByUserId(user.getId());
+                throw new EmailNotVerifiedException("Email no verificado");
+            }
+            
             List<String> roles = user.getRoles().stream()
                     .map(r -> r.getName())
                     .collect(Collectors.toList());
+
+            // ROTACIÓN: Invalidar refresh token usado (OPERACIÓN ATÓMICA para evitar race condition)
+            refreshTokenEntity.setRevoked(true);
+            RefreshToken savedToken = refreshTokenRepository.saveAndFlush(refreshTokenEntity); // flush inmediato para atomicidad
+            
+            // Double-check después del save (protección contra race condition)
+            if (!savedToken.isRevoked()) {
+                logger.error("❌ [REFRESH CRITICAL] Error atómico: token no se marcó como revocado");
+                throw new RefreshTokenReusedException("Error en rotación de token");
+            }
+            
+            logger.debug("🔄 [REFRESH] Refresh token anterior marcado como revocado (atómico)");
 
             // Generar nuevo access token
             String newAccessToken = Jwts.builder()
@@ -306,7 +392,7 @@ public class AuthController {
                     .signWith(TokenJwtConfig.SECRET_KEY)
                     .compact();
 
-            // Eliminar tokens viejos y guardar el nuevo
+            // Eliminar access tokens viejos y guardar el nuevo
             activeTokenRepository.deleteOldTokensByUserId(user.getId());
 
             ActiveToken newActiveToken = new ActiveToken();
@@ -314,32 +400,75 @@ public class AuthController {
             newActiveToken.setToken(newAccessToken);
             newActiveToken.setCreatedAt(new Date());
             newActiveToken.setExpiresAt(new Date(System.currentTimeMillis() + TokenJwtConfig.ACCESS_TOKEN_EXPIRATION));
-
+            newActiveToken.setDeviceType(refreshTokenEntity.getDeviceType()); // Mantener el mismo tipo de dispositivo
             activeTokenRepository.save(newActiveToken);
 
-            // Configurar nueva cookie
+            // ROTACIÓN: Generar nuevo refresh token
+            String newRefreshToken = Jwts.builder()
+                    .setSubject(email)
+                    .claim("type", "refresh")
+                    .claim("timestamp", System.currentTimeMillis())
+                    .setExpiration(new Date(System.currentTimeMillis() + TokenJwtConfig.REFRESH_TOKEN_EXPIRATION))
+                    .signWith(TokenJwtConfig.SECRET_KEY)
+                    .compact();
+
+            // Guardar nuevo refresh token en BD
+            RefreshToken newRefreshTokenEntity = new RefreshToken();
+            newRefreshTokenEntity.setAccountMaster(user);
+            newRefreshTokenEntity.setToken(newRefreshToken);
+            newRefreshTokenEntity.setCreatedAt(new Date());
+            newRefreshTokenEntity.setExpiresAt(new Date(System.currentTimeMillis() + TokenJwtConfig.REFRESH_TOKEN_EXPIRATION));
+            newRefreshTokenEntity.setDeviceType(refreshTokenEntity.getDeviceType()); // Mantener el mismo tipo de dispositivo
+            newRefreshTokenEntity.setRevoked(false);
+            refreshTokenRepository.save(newRefreshTokenEntity);
+
+            // Configurar cookie access token
             Cookie cookie = new Cookie("access_token", newAccessToken);
             cookie.setHttpOnly(true);
+            cookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
             cookie.setPath("/");
             cookie.setMaxAge((int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
             response.addCookie(cookie);
 
-            System.out.println("🔄 [REFRESH SUCCESS] Token renovado para: " + email);
+            // Configurar cookie refresh token (nuevo)
+            Cookie refreshCookie = new Cookie("refresh_token", newRefreshToken);
+            refreshCookie.setHttpOnly(true);
+            refreshCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
+            refreshCookie.setPath("/");
+            refreshCookie.setMaxAge((int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
+            response.addCookie(refreshCookie);
 
-            return ResponseEntity.ok(Map.of(
-                    "message", "Token renovado exitosamente",
-                    "email", email));
+            // SECURITY FIX: Registrar actividad de refresh
+            RecentActivity activity = new RecentActivity();
+            activity.setAccountMaster(user);
+            activity.setTimestamp(new Date());
+            activity.setIpAddress(request.getRemoteAddr());
+            activity.setAction("Token Refresh");
+            recentActivityRepository.save(activity);
 
+            logger.info("🔄 [REFRESH SUCCESS] Tokens renovados para: {}", email);
+
+            return ResponseEntity.ok(Map.of("message", "Token renewed successfully"));
+
+        } catch (RefreshTokenReusedException e) {
+            logger.warn("❌ [REFRESH] Refresh token reusado: {}", e.getMessage());
+            throw e; // Lanzar para que GlobalExceptionHandler lo maneje
+        } catch (UserDisabledException e) {
+            logger.warn("❌ [REFRESH] Usuario deshabilitado");
+            throw e; // Lanzar para que GlobalExceptionHandler lo maneje
+        } catch (EmailNotVerifiedException e) {
+            logger.warn("❌ [REFRESH] Email no verificado");
+            throw e; // Lanzar para que GlobalExceptionHandler lo maneje
         } catch (ExpiredJwtException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("message", "Refresh token expirado", "error", "REFRESH_TOKEN_EXPIRED"));
+                    .body(Map.of("message", "Refresh token expired", "error", "REFRESH_TOKEN_EXPIRED"));
         } catch (JwtException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("message", "Refresh token inválido", "error", "REFRESH_TOKEN_INVALID"));
+                    .body(Map.of("message", "Refresh token invalid", "error", "REFRESH_TOKEN_INVALID"));
         } catch (Exception e) {
-            System.out.println("❌ [REFRESH ERROR] Error renovando token: " + e.getMessage());
+            logger.error("❌ [REFRESH ERROR] Error renovando token: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Error interno renovando token", "error", "INTERNAL_ERROR"));
+                    .body(Map.of("message", "Internal error renewing token", "error", "INTERNAL_ERROR"));
         }
     }
 
