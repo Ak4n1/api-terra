@@ -2,6 +2,8 @@ package com.ak4n1.terra.api.terra_api.auth.repositories;
 
 
 import com.ak4n1.terra.api.terra_api.auth.entities.RecentActivity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -22,5 +24,14 @@ public interface RecentActivityRepository extends JpaRepository<RecentActivity, 
      * @return Lista de actividades recientes ordenadas de más reciente a más antigua
      */
     List<RecentActivity> findByAccountMaster_EmailOrderByTimestampDesc(String email);
+
+    /**
+     * Busca todas las actividades recientes de un usuario ordenadas por timestamp descendente con paginación.
+     * 
+     * @param email Email del usuario
+     * @param pageable Información de paginación
+     * @return Página de actividades recientes ordenadas de más reciente a más antigua
+     */
+    Page<RecentActivity> findByAccountMaster_EmailOrderByTimestampDesc(String email, Pageable pageable);
 
 }

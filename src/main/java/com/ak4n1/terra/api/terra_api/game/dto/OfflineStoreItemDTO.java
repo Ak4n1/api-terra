@@ -1,26 +1,15 @@
 package com.ak4n1.terra.api.terra_api.game.dto;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-
 public class OfflineStoreItemDTO {
     private int itemId;
     private long count;
     private long price;
-
     private Integer enchantLevel;
     private Long time;
-
     private String name;
     private String type;
-
-    // Campos crudos para transformar desde texto a JSON
-    private String rawAttributes;
-    private String rawStats;
-
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private String icon; // Icono del item (directamente en el nivel raíz)
+    private String grade; // Crystal type/Grade (D, C, B, A, S) - directamente en el nivel raíz
 
     // Constructor vacío por claridad
     public OfflineStoreItemDTO() {}
@@ -33,8 +22,8 @@ public class OfflineStoreItemDTO {
     public void setTime(Long time) { this.time = time; }
     public void setName(String name) { this.name = name; }
     public void setType(String type) { this.type = type; }
-    public void setAttributes(String rawAttributes) { this.rawAttributes = rawAttributes; }
-    public void setStats(String rawStats) { this.rawStats = rawStats; }
+    public void setIcon(String icon) { this.icon = icon; }
+    public void setGrade(String grade) { this.grade = grade; }
 
     // Getters
     public int getItemId() { return itemId; }
@@ -42,55 +31,8 @@ public class OfflineStoreItemDTO {
     public long getPrice() { return price; }
     public Integer getEnchantLevel() { return enchantLevel; }
     public Long getTime() { return time; }
-    public String getName() { return name; }
-    public String getType() { return type; }
-
-    public String getRawAttributes() {
-        return rawAttributes;
-    }
-
-    public void setRawAttributes(String rawAttributes) {
-        this.rawAttributes = rawAttributes;
-    }
-
-    public String getRawStats() {
-        return rawStats;
-    }
-
-    public void setRawStats(String rawStats) {
-        this.rawStats = rawStats;
-    }
-
-    // JSON resultante para frontend
-    public Map<String, Object> getAttributes() {
-        return parseMapString(rawAttributes);
-    }
-
-    public Map<String, Object> getStats() {
-        return parseMapString(rawStats);
-    }
-
-    // Conversor robusto texto → Map JSON
-    private Map<String, Object> parseMapString(String raw) {
-        if (raw == null || raw.isEmpty()) return Collections.emptyMap();
-
-        try {
-            String json = raw.trim()
-                    .replaceAll("([\\{,]\\s*)([^\\{\\}\\[\\],:=]+)=", "$1\"$2\":")
-                    .replaceAll("=([^\\{\\}\\[\\],:=]+)([,}])", ":\"$1\"$2")
-                    .replaceAll(",\\s*}", "}");
-
-            return objectMapper.readValue(json, Map.class);
-        } catch (Exception e) {
-            Map<String, Object> map = new HashMap<>();
-            String cleaned = raw.replaceAll("^\\{", "").replaceAll("}$", "");
-            for (String pair : cleaned.split(",")) {
-                String[] kv = pair.trim().split("=");
-                if (kv.length == 2) {
-                    map.put(kv[0].trim(), kv[1].trim());
-                }
-            }
-            return map;
-        }
-    }
+    public String getName() { return name != null ? name : ""; }
+    public String getType() { return type != null ? type : ""; }
+    public String getIcon() { return icon != null ? icon : ""; }
+    public String getGrade() { return grade != null ? grade : ""; }
 }

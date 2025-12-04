@@ -59,7 +59,7 @@ public class ItemCatalogDTO {
         dto.sellable = template.isSellable();
         dto.tradeable = template.isTradeable();
         dto.dropable = template.isDropable();
-        dto.bodyPart = template.getBodyPartName();
+        dto.bodyPart = template.getBodyPart();
         dto.materialType = template.getMaterialType();
         dto.crystalCount = template.getCrystalCount();
         dto.crystalType = template.getCrystalType();

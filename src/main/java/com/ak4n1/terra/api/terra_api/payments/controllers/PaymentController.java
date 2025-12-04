@@ -57,7 +57,6 @@ public class PaymentController {
         
         try {
             List<CoinPackageResponseDTO> packages = paymentService.getAllActivePackages();
-            logger.info("✅ [PACKAGES] Paquetes obtenidos exitosamente: {} paquetes", packages.size());
             return ResponseEntity.ok(packages);
         } catch (Exception e) {
             logger.error("❌ [PACKAGES] Error al obtener paquetes: {}", e.getMessage(), e);
@@ -191,7 +190,6 @@ public class PaymentController {
                 return ResponseEntity.badRequest().body(response);
             }
             
-            logger.info("✅ [PAYMENT] Preferencia creada exitosamente: {}", response.getPreferenceId());
             return ResponseEntity.ok(response);
             
         } catch (Exception e) {

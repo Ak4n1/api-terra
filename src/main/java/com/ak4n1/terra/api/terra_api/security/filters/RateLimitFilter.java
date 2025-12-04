@@ -1,6 +1,7 @@
 package com.ak4n1.terra.api.terra_api.security.filters;
 
 import com.ak4n1.terra.api.terra_api.security.services.RateLimitService;
+import com.ak4n1.terra.api.terra_api.security.config.RateLimitConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -35,6 +36,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Autowired
     private RateLimitService rateLimitService;
+
+    @Autowired
+    private RateLimitConfig rateLimitConfig;
 
     /**
      * Paths que requieren rate limiting.
@@ -118,9 +122,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
      * @throws IOException si hay error escribiendo la respuesta
      */
     private void sendRateLimitError(HttpServletResponse response, String path) throws IOException {
-            response.setStatus(429); // HTTP 429 Too Many Requests
+        response.setStatus(429); // HTTP 429 Too Many Requests
         response.setContentType("application/json");
-        response.setHeader("Retry-After", "900"); // 15 minutos en segundos
+        
+        // Calcular Retry-After según el endpoint
+        int retryAfterSeconds = getRetryAfterSeconds(path);
+        response.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
         
         Map<String, Object> error = Map.of(
                 "message", "Too many requests. Please try again later.",
@@ -129,6 +136,26 @@ public class RateLimitFilter extends OncePerRequestFilter {
         );
         
         new ObjectMapper().writeValue(response.getOutputStream(), error);
+    }
+
+    /**
+     * Obtiene el tiempo de retry en segundos según el endpoint.
+     * 
+     * @param path Path del endpoint
+     * @return Tiempo en segundos para el header Retry-After
+     */
+    private int getRetryAfterSeconds(String path) {
+        if (path.equals("/api/auth/login")) {
+            return rateLimitConfig.getLoginWindowMinutes() * 60;
+        } else if (path.equals("/api/auth/refresh")) {
+            return rateLimitConfig.getRefreshWindowMinutes() * 60;
+        } else if (path.equals("/api/auth/register")) {
+            return rateLimitConfig.getRegisterWindowMinutes() * 60;
+        } else if (path.equals("/api/auth/resend-reset-email") || path.equals("/api/auth/reset-password")) {
+            return rateLimitConfig.getResetPasswordWindowMinutes() * 60;
+        }
+        // Por defecto, 15 minutos (900 segundos)
+        return 900;
     }
 }
 

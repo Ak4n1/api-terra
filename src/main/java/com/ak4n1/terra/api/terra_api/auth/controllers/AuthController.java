@@ -1,8 +1,11 @@
 package com.ak4n1.terra.api.terra_api.auth.controllers;
 
+import com.ak4n1.terra.api.terra_api.auth.dto.ChangePasswordRequestDTO;
+import com.ak4n1.terra.api.terra_api.auth.dto.EmailRequestDTO;
 import com.ak4n1.terra.api.terra_api.auth.dto.RecentActivityDTO;
 import com.ak4n1.terra.api.terra_api.auth.dto.RegisterRequestDTO;
 import com.ak4n1.terra.api.terra_api.auth.dto.RegisterResponseDTO;
+import com.ak4n1.terra.api.terra_api.auth.dto.ResetPasswordRequestDTO;
 import com.ak4n1.terra.api.terra_api.auth.entities.AccountMaster;
 import com.ak4n1.terra.api.terra_api.auth.entities.RecentActivity;
 import com.ak4n1.terra.api.terra_api.auth.entities.RefreshToken;
@@ -16,7 +19,6 @@ import com.ak4n1.terra.api.terra_api.auth.repositories.RefreshTokenRepository;
 import com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig;
 import com.ak4n1.terra.api.terra_api.auth.services.AuthService;
 import com.ak4n1.terra.api.terra_api.auth.entities.ActiveToken;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
@@ -137,35 +139,17 @@ public class AuthController {
         // Eliminar access token de BD
         if (token != null) {
             activeTokenRepository.deleteByToken(token);
-            logger.debug("🗑️ [LOGOUT] Access token eliminado de BD");
         }
 
-        // Revocar refresh token de BD
+        // Eliminar refresh token de BD
         if (refreshToken != null) {
-            refreshTokenRepository.findByToken(refreshToken).ifPresent(refreshTokenEntity -> {
-                refreshTokenEntity.setRevoked(true);
-                refreshTokenRepository.save(refreshTokenEntity);
-                logger.debug("🗑️ [LOGOUT] Refresh token revocado en BD");
-            });
+            refreshTokenRepository.deleteByToken(refreshToken);
         }
 
-        // Eliminar cookie access_token en el cliente
-        Cookie accessCookie = new Cookie("access_token", null);
-        accessCookie.setHttpOnly(true);
-        accessCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
-        accessCookie.setPath("/");
-        accessCookie.setMaxAge(0); // expira ya
-        response.addCookie(accessCookie);
+        // Eliminar cookies en cliente
+        TokenJwtConfig.addCookie(response, "access_token", "", 0);
+        TokenJwtConfig.addCookie(response, "refresh_token", "", 0);
 
-        // Eliminar cookie refresh_token en el cliente
-        Cookie refreshCookie = new Cookie("refresh_token", null);
-        refreshCookie.setHttpOnly(true);
-        refreshCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
-        refreshCookie.setPath("/");
-        refreshCookie.setMaxAge(0); // expira ya
-        response.addCookie(refreshCookie);
-
-        logger.info("✅ [LOGOUT] Logout exitoso");
         return ResponseEntity.ok(Map.of("message", "Logout successful"));
     }
 
@@ -181,9 +165,44 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Not authenticated");
         }
 
+        // Ahora el principal es userId (String)
+        String userIdStr = (String) authentication.getPrincipal();
+        try {
+            Long userId = Long.valueOf(userIdStr);
+            Optional<AccountMaster> userOpt = accountMasterRepository.findById(userId);
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User not found");
+            }
+            // Reutilizamos el servicio actual tomando el email del usuario
+            String email = userOpt.get().getEmail();
+            Map<String, Object> userData = authService.getCurrentUser(email);
+            return ResponseEntity.ok(userData);
+        } catch (NumberFormatException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token subject");
+        }
+    }
+
+    /**
+     * Nuevo endpoint para obtener la información del usuario autenticado usando el email del principal.
+     *
+     * <p>Este endpoint evita depender del subject del JWT y utiliza directamente el
+     * principal (email) establecido por el filtro de validación.
+     *
+     * @param authentication contexto de autenticación
+     * @return datos del usuario autenticado o UNAUTHORIZED si no hay sesión
+     */
+    @GetMapping("/getme")
+    public ResponseEntity<?> getMe(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Not authenticated");
+        }
+
         String email = (String) authentication.getPrincipal();
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid principal");
+        }
+
         Map<String, Object> userData = authService.getCurrentUser(email);
-        
         return ResponseEntity.ok(userData);
     }
 
@@ -208,15 +227,15 @@ public class AuthController {
      * Restablece la contraseña del usuario usando un token de reseteo.
      * 
      * @param tokenUser Token de reseteo de contraseña recibido por email
-     * @param requestBody Cuerpo de la petición con la nueva contraseña
+     * @param requestDTO Cuerpo de la petición con la nueva contraseña
      * @return ResponseEntity con el resultado (OK si se cambió, BAD_REQUEST si el token es inválido o expiró)
      */
     @PostMapping("/reset-password")
     public ResponseEntity<Map<String, Object>> resetPassword(
             @RequestParam("token") String tokenUser,
-            @RequestBody Map<String, Object> requestBody) {
+            @Valid @RequestBody ResetPasswordRequestDTO requestDTO) {
 
-        String password = (String) requestBody.get("password");
+        String password = requestDTO.getPassword();
 
         Map<String, Object> response = authService.resetPassword(tokenUser, password);
 
@@ -230,12 +249,12 @@ public class AuthController {
     /**
      * Reenvía el email de verificación al usuario.
      * 
-     * @param body Cuerpo de la petición con el email del usuario
+     * @param requestDTO Cuerpo de la petición con el email del usuario
      * @return ResponseEntity con el resultado (OK si se envió, FORBIDDEN si hay restricción de tiempo, BAD_REQUEST si hay error)
      */
     @PostMapping("/resend-verification")
-    public ResponseEntity<?> resendVerificationEmail(@RequestBody Map<String, String> body) {
-        String email = body.get("email");
+    public ResponseEntity<?> resendVerificationEmail(@Valid @RequestBody EmailRequestDTO requestDTO) {
+        String email = requestDTO.getEmail();
         Map<String, String> result = authService.resendVerificationEmail(email);
         System.out.println();
         switch (result.get("status")) {
@@ -260,29 +279,78 @@ public class AuthController {
     }
 
     /**
-     * Obtiene el historial de actividad reciente del usuario autenticado.
+     * Obtiene el historial de actividad reciente del usuario autenticado con paginación.
      * 
      * @param authentication Autenticación de Spring Security con los datos del usuario
-     * @return ResponseEntity con la lista de actividades recientes o UNAUTHORIZED si no está autenticado
+     * @param page Número de página (0-indexed, por defecto 0)
+     * @param size Tamaño de página (por defecto 10)
+     * @return ResponseEntity con la página de actividades recientes o UNAUTHORIZED si no está autenticado
      */
     @GetMapping("/recent-activity")
-    public ResponseEntity<?> getRecentActivity(Authentication authentication) {
+    public ResponseEntity<?> getRecentActivity(
+            Authentication authentication,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "5") int size) {
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Not authenticated");
         }
 
         String email = (String) authentication.getPrincipal();
-        List<RecentActivity> activities = recentActivityRepository
-                .findByAccountMaster_EmailOrderByTimestampDesc(email);
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        org.springframework.data.domain.Page<RecentActivity> activityPage = recentActivityRepository
+                .findByAccountMaster_EmailOrderByTimestampDesc(email, pageable);
 
-        List<RecentActivityDTO> activityDTOs = activities.stream()
+        List<RecentActivityDTO> activityDTOs = activityPage.getContent().stream()
                 .map(act -> new RecentActivityDTO(
                         act.getAction(),
                         new Timestamp(act.getTimestamp().getTime()),
                         act.getIpAddress()))
                 .toList();
 
-        return ResponseEntity.ok(activityDTOs);
+        // Crear respuesta paginada
+        java.util.Map<String, Object> response = new java.util.HashMap<>();
+        response.put("content", activityDTOs);
+        response.put("totalElements", activityPage.getTotalElements());
+        response.put("totalPages", activityPage.getTotalPages());
+        response.put("currentPage", activityPage.getNumber());
+        response.put("size", activityPage.getSize());
+        response.put("hasNext", activityPage.hasNext());
+        response.put("hasPrevious", activityPage.hasPrevious());
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Cambia la contraseña del usuario autenticado.
+     * 
+     * <p>Para usuarios con password existente, requiere verificar la contraseña actual.
+     * Para usuarios sin password (OAuth), solo requiere la nueva contraseña.
+     * 
+     * @param authentication Autenticación de Spring Security con los datos del usuario
+     * @param requestDTO Cuerpo de la petición con currentPassword (opcional) y newPassword
+     * @return ResponseEntity con el resultado (OK si se cambió, BAD_REQUEST si hay error)
+     */
+    @PostMapping("/change-password")
+    public ResponseEntity<?> changePassword(Authentication authentication, @Valid @RequestBody ChangePasswordRequestDTO requestDTO) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Not authenticated");
+        }
+
+        String email = (String) authentication.getPrincipal();
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid principal");
+        }
+
+        String currentPassword = requestDTO.getCurrentPassword();
+        String newPassword = requestDTO.getNewPassword();
+
+        Map<String, Object> result = authService.changePassword(email, currentPassword, newPassword);
+
+        if ((boolean) result.get("success")) {
+            return ResponseEntity.ok(result);
+        } else {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(result);
+        }
     }
 
     /**
@@ -314,13 +382,13 @@ public class AuthController {
                     .parseClaimsJws(refreshToken)
                     .getBody();
 
-            String email = claims.getSubject();
+            String userIdSub = claims.getSubject();
             
             // VALIDACIÓN EN BD: Buscar refresh token en base de datos
             Optional<RefreshToken> refreshTokenOpt = refreshTokenRepository.findByToken(refreshToken);
             
             if (refreshTokenOpt.isEmpty()) {
-                logger.warn("❌ [REFRESH] Refresh token no encontrado en BD: {}", email);
+                logger.warn("❌ [REFRESH] Refresh token no encontrado en BD");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body(Map.of("message", "Refresh token invalid or revoked", "error", "REFRESH_TOKEN_INVALID"));
             }
@@ -329,19 +397,28 @@ public class AuthController {
             
             // Validar que no esté revocado (ANTES de hacer cualquier cambio)
             if (refreshTokenEntity.isRevoked()) {
-                logger.warn("❌ [REFRESH] Refresh token revocado (reuso detectado): {}", email);
+                logger.warn("❌ [REFRESH] Refresh token revocado (reuso detectado)");
                 throw new RefreshTokenReusedException("Refresh token ya fue usado y no puede reutilizarse");
             }
             
             // Validar que no esté expirado (validación en BD además de JWT)
             if (refreshTokenEntity.getExpiresAt().before(new Date())) {
-                logger.warn("⏰ [REFRESH] Refresh token expirado en BD: {}", email);
+                logger.warn("⏰ [REFRESH] Refresh token expirado en BD");
                 refreshTokenRepository.delete(refreshTokenEntity);
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body(Map.of("message", "Refresh token expired", "error", "REFRESH_TOKEN_EXPIRED"));
             }
 
-            Optional<AccountMaster> userOpt = accountMasterRepository.findByEmail(email);
+            // Buscar usuario por ID (sub)
+            Long userId = null;
+            try {
+                userId = Long.valueOf(userIdSub);
+            } catch (NumberFormatException e) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("message", "Invalid token subject", "error", "SUB_INVALID"));
+            }
+
+            Optional<AccountMaster> userOpt = accountMasterRepository.findById(userId);
 
             if (userOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -352,7 +429,7 @@ public class AuthController {
             
             // SECURITY FIX: Validar estado del usuario
             if (!user.isEnabled()) {
-                logger.warn("❌ [REFRESH] Usuario deshabilitado: {}", email);
+                logger.warn("❌ [REFRESH] Usuario deshabilitado: {}", user.getEmail());
                 // Revocar todos los tokens del usuario
                 refreshTokenRepository.revokeAllByUserId(user.getId());
                 activeTokenRepository.deleteOldTokensByUserId(user.getId());
@@ -360,7 +437,7 @@ public class AuthController {
             }
 
             if (!user.isEmailVerified()) {
-                logger.warn("❌ [REFRESH] Email no verificado: {}", email);
+                logger.warn("❌ [REFRESH] Email no verificado: {}", user.getEmail());
                 // Revocar todos los tokens del usuario
                 refreshTokenRepository.revokeAllByUserId(user.getId());
                 activeTokenRepository.deleteOldTokensByUserId(user.getId());
@@ -381,11 +458,10 @@ public class AuthController {
                 throw new RefreshTokenReusedException("Error en rotación de token");
             }
             
-            logger.debug("🔄 [REFRESH] Refresh token anterior marcado como revocado (atómico)");
 
-            // Generar nuevo access token
+            // Generar nuevo access token (sub = userId)
             String newAccessToken = Jwts.builder()
-                    .setSubject(email)
+                    .setSubject(String.valueOf(user.getId()))
                     .claim("authorities", roles)
                     .claim("timestamp", System.currentTimeMillis())
                     .setExpiration(new Date(System.currentTimeMillis() + TokenJwtConfig.ACCESS_TOKEN_EXPIRATION))
@@ -403,9 +479,9 @@ public class AuthController {
             newActiveToken.setDeviceType(refreshTokenEntity.getDeviceType()); // Mantener el mismo tipo de dispositivo
             activeTokenRepository.save(newActiveToken);
 
-            // ROTACIÓN: Generar nuevo refresh token
+            // ROTACIÓN: Generar nuevo refresh token (sub = userId)
             String newRefreshToken = Jwts.builder()
-                    .setSubject(email)
+                    .setSubject(String.valueOf(user.getId()))
                     .claim("type", "refresh")
                     .claim("timestamp", System.currentTimeMillis())
                     .setExpiration(new Date(System.currentTimeMillis() + TokenJwtConfig.REFRESH_TOKEN_EXPIRATION))
@@ -422,31 +498,9 @@ public class AuthController {
             newRefreshTokenEntity.setRevoked(false);
             refreshTokenRepository.save(newRefreshTokenEntity);
 
-            // Configurar cookie access token
-            Cookie cookie = new Cookie("access_token", newAccessToken);
-            cookie.setHttpOnly(true);
-            cookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
-            cookie.setPath("/");
-            cookie.setMaxAge((int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
-            response.addCookie(cookie);
-
-            // Configurar cookie refresh token (nuevo)
-            Cookie refreshCookie = new Cookie("refresh_token", newRefreshToken);
-            refreshCookie.setHttpOnly(true);
-            refreshCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
-            refreshCookie.setPath("/");
-            refreshCookie.setMaxAge((int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
-            response.addCookie(refreshCookie);
-
-            // SECURITY FIX: Registrar actividad de refresh
-            RecentActivity activity = new RecentActivity();
-            activity.setAccountMaster(user);
-            activity.setTimestamp(new Date());
-            activity.setIpAddress(request.getRemoteAddr());
-            activity.setAction("Token Refresh");
-            recentActivityRepository.save(activity);
-
-            logger.info("🔄 [REFRESH SUCCESS] Tokens renovados para: {}", email);
+            // Configurar cookies según entorno
+            TokenJwtConfig.addCookie(response, "access_token", newAccessToken, (int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
+            TokenJwtConfig.addCookie(response, "refresh_token", newRefreshToken, (int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
 
             return ResponseEntity.ok(Map.of("message", "Token renewed successfully"));
 
@@ -471,5 +525,71 @@ public class AuthController {
                     .body(Map.of("message", "Internal error renewing token", "error", "INTERNAL_ERROR"));
         }
     }
+
+    /**
+     * Genera y envía un código de desactivación de cuenta al email del usuario autenticado.
+     * 
+     * @param authentication Autenticación de Spring Security con los datos del usuario
+     * @return ResponseEntity con el resultado (OK si se envió, FORBIDDEN si hay restricción de tiempo)
+     */
+    @PostMapping("/deactivate-code")
+    public ResponseEntity<?> sendDeactivationCode(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Not authenticated");
+        }
+
+        String email = (String) authentication.getPrincipal();
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid principal");
+        }
+
+        Map<String, String> result = authService.generateAndSendDeactivationCode(email);
+
+        return switch (result.get("status")) {
+            case "success" -> ResponseEntity.ok(result);
+            case "forbidden" -> ResponseEntity.status(HttpStatus.FORBIDDEN).body(result);
+            default -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(result);
+        };
+    }
+
+    /**
+     * Verifica el código de desactivación y desactiva la cuenta del usuario autenticado.
+     * 
+     * @param authentication Autenticación de Spring Security con los datos del usuario
+     * @param requestDTO Cuerpo de la petición con el código de desactivación
+     * @param request HttpServletRequest para obtener la IP del cliente
+     * @return ResponseEntity con el resultado (OK si se desactivó, BAD_REQUEST si hay error)
+     */
+    @PostMapping("/deactivate-verify")
+    public ResponseEntity<?> verifyDeactivationCode(
+            Authentication authentication,
+            @RequestBody Map<String, String> requestDTO,
+            HttpServletRequest request) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Not authenticated");
+        }
+
+        String email = (String) authentication.getPrincipal();
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid principal");
+        }
+
+        String code = requestDTO.get("code");
+        if (code == null || code.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("status", "error", "message", "Code is required"));
+        }
+
+        String ipAddress = request.getRemoteAddr();
+        Map<String, Object> result = authService.verifyDeactivationCode(email, code, ipAddress);
+
+        return switch (result.get("status").toString()) {
+            case "success" -> ResponseEntity.ok(result);
+            case "unauthorized", "expired" -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(result);
+            default -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(result);
+        };
+    }
+
+    
 
 }

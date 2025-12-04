@@ -53,6 +53,15 @@ public class EmailConfig {
         props.put("mail.smtp.auth", "true");
         props.put("mail.smtp.ssl.enable", "true");
         props.put("mail.smtp.ssl.trust", host);
+        
+        // Timeouts para evitar bloqueos largos
+        props.put("mail.smtp.connectiontimeout", "10000"); // 10 segundos para conectar
+        props.put("mail.smtp.timeout", "10000"); // 10 segundos para enviar
+        props.put("mail.smtp.writetimeout", "10000"); // 10 segundos para escribir
+        
+        // Pool de conexiones para mejor rendimiento
+        props.put("mail.smtp.connectionpoolsize", "5");
+        props.put("mail.smtp.connectionpooltimeout", "2000");
 
         return mailSender;
     }

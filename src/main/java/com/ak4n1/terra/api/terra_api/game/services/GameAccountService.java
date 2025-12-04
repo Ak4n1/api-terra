@@ -38,7 +38,7 @@ public interface GameAccountService {
     /**
      * Genera y envía un código de reset de contraseña al email asociado a una cuenta.
      * 
-     * <p>El código tiene una validez de 15 minutos y se valida que no se haya
+     * <p>El código tiene una validez de 5 minutos y se valida que no se haya
      * enviado otro código recientemente.
      * 
      * @param login Nombre de login de la cuenta de juego
@@ -66,7 +66,7 @@ public interface GameAccountService {
     /**
      * Genera y envía un código de creación de cuenta al email especificado.
      * 
-     * <p>El código tiene una validez de 15 minutos y se valida que no se haya
+     * <p>El código tiene una validez de 5 minutos y se valida que no se haya
      * enviado otro código recientemente.
      * 
      * @param email Email del usuario que solicita crear la cuenta

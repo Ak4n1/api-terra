@@ -15,6 +15,7 @@ import org.w3c.dom.NodeList;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.File;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -75,10 +76,54 @@ public class ItemXmlParser {
                 }
             }
             
-            logger.debug("Parseados {} items del archivo {}", items.size(), xmlFile.getName());
             
         } catch (Exception e) {
             logger.error("Error parseando archivo XML {}: {}", xmlFile.getName(), e.getMessage());
+        }
+        
+        return items;
+    }
+    
+    /**
+     * Parsea un XML desde un InputStream y retorna un mapa de items indexados por ID.
+     * 
+     * <p>Útil cuando los recursos están dentro de un JAR y no se puede obtener un File directamente.
+     * 
+     * @param inputStream InputStream del archivo XML a parsear
+     * @param fileName Nombre del archivo (para logging)
+     * @return Mapa con los items parseados indexados por su ID
+     */
+    public static Map<Integer, ItemTemplate> parseFile(InputStream inputStream, String fileName) {
+        Map<Integer, ItemTemplate> items = new HashMap<>();
+        
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            Document doc = builder.parse(inputStream);
+            doc.getDocumentElement().normalize();
+            
+            NodeList itemNodes = doc.getElementsByTagName("item");
+            
+            for (int i = 0; i < itemNodes.getLength(); i++) {
+                Node node = itemNodes.item(i);
+                
+                if (node.getNodeType() == Node.ELEMENT_NODE) {
+                    Element element = (Element) node;
+                    
+                    try {
+                        ItemTemplate item = parseItemElement(element);
+                        if (item != null) {
+                            items.put(item.getId(), item);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Error parseando item en archivo {}: {}", fileName, e.getMessage());
+                    }
+                }
+            }
+            
+            
+        } catch (Exception e) {
+            logger.error("Error parseando archivo XML {}: {}", fileName, e.getMessage());
         }
         
         return items;
@@ -121,7 +166,7 @@ public class ItemXmlParser {
                         set.set(setName, Integer.parseInt(setVal));
                     }
                 } catch (NumberFormatException e) {
-                    // Si no es número, guardar como string
+                    // Si no es número, guardar como string (incluyendo bodypart que siempre es string)
                     set.set(setName, setVal);
                 }
             }

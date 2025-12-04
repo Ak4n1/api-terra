@@ -73,7 +73,6 @@ public class WebhookController {
             
             Map<String, String> response = new HashMap<>();
             if (success) {
-                logger.info("✅ [WEBHOOK] Webhook procesado exitosamente");
                 response.put("status", "success");
                 response.put("message", "Webhook procesado correctamente");
                 return ResponseEntity.ok(response);
@@ -151,7 +150,6 @@ public class WebhookController {
             
             Map<String, Object> response = new HashMap<>();
             if (success) {
-                logger.info("✅ [SIMULATE] Webhook simulado procesado exitosamente");
                 response.put("status", "success");
                 response.put("message", "Webhook simulado procesado correctamente");
                 response.put("paymentId", paymentId);

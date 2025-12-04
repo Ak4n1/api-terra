@@ -1,11 +1,5 @@
 package com.ak4n1.terra.api.terra_api.game.dto;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-
 public class ItemDTO {
     private int objectId;
     private int itemId;
@@ -16,14 +10,9 @@ public class ItemDTO {
     private String name = "item";
     private String type;
     private String player;
-
-
-
-
-
-    // Campos crudos
-    private String rawAttributes;
-    private String rawStats;
+    private String defaultAction;
+    private String bodyPart;
+    private String icon; // Icono del item (directamente en el nivel raíz)
 
     public String getPlayer() {
         return player;
@@ -32,8 +21,6 @@ public class ItemDTO {
     public void setPlayer(String player) {
         this.player = player;
     }
-
-    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public ItemDTO() {}
 
@@ -62,43 +49,12 @@ public class ItemDTO {
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
 
-    public void setRawAttributes(String rawAttributes) { this.rawAttributes = rawAttributes; }
-    public void setRawStats(String rawStats) { this.rawStats = rawStats; }
+    public String getDefaultAction() { return defaultAction; }
+    public void setDefaultAction(String defaultAction) { this.defaultAction = defaultAction; }
 
-    // Métodos para exponer como JSON automáticamente
-    public Map<String, Object> getAttributes() {
-        return parseMapString(rawAttributes);
-    }
+    public String getBodyPart() { return bodyPart != null ? bodyPart : ""; }
+    public void setBodyPart(String bodyPart) { this.bodyPart = bodyPart; }
 
-    public Map<String, Object> getStats() {
-        return parseMapString(rawStats);
-    }
-
-    // Utilidad robusta para parsear = a JSON
-    private Map<String, Object> parseMapString(String raw) {
-        if (raw == null || raw.isEmpty()) return Collections.emptyMap();
-
-        try {
-            // Intenta convertir = a JSON válido
-            String json = raw.trim()
-                    .replaceAll("([\\{,]\\s*)([^\\{\\}\\[\\],:=]+)=", "$1\"$2\":")
-                    .replaceAll("=([^\\{\\}\\[\\],:=]+)([,}])", ":\"$1\"$2")
-                    .replaceAll(",\\s*}", "}");
-
-            return objectMapper.readValue(json, Map.class);
-        } catch (Exception e) {
-            // Fallback simple a mano
-            Map<String, Object> map = new HashMap<>();
-            String cleaned = raw.replaceAll("^\\{", "").replaceAll("}$", "");
-            for (String pair : cleaned.split(",")) {
-                String[] kv = pair.trim().split("=");
-                if (kv.length == 2) {
-                    map.put(kv[0].trim(), kv[1].trim());
-                }
-            }
-            return map;
-        }
-    }
-
-
+    public String getIcon() { return icon != null ? icon : ""; }
+    public void setIcon(String icon) { this.icon = icon; }
 }

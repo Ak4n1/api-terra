@@ -57,7 +57,6 @@ public class KickProxyController {
         ResponseEntity<String> apiResp = rest.exchange(apiUrl, HttpMethod.GET, apiReq, String.class);
 
         // ⬇️ Mostramos la respuesta en consola
-        logger.debug("\uD83D\uDCFA [KICK API] Respuesta Kick API: {}", apiResp.getBody());
 
         return ResponseEntity.status(apiResp.getStatusCode()).body(apiResp.getBody());
     }

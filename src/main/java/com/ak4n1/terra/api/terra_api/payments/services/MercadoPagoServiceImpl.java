@@ -107,8 +107,6 @@ public class MercadoPagoServiceImpl implements MercadoPagoService {
             // Crear preferencia en Mercado Pago
             Preference preference = client.create(preferenceRequest);
             
-            logger.info("Preferencia creada exitosamente: {}", preference.getId());
-            
             // Retornar respuesta
             return new PaymentPreferenceResponse(
                 preference.getId(),
@@ -178,32 +176,20 @@ public class MercadoPagoServiceImpl implements MercadoPagoService {
                 return false;
             }
             
-            logger.info("🟢 [WEBHOOK] Payment ID extraído exitosamente: {}", paymentId);
-            
             // Verificar si es un webhook de prueba (ID 123456 es común en pruebas)
             if ("123456".equals(paymentId)) {
-                logger.info("🟡 [WEBHOOK] Detectado webhook de prueba con ID: {}", paymentId);
-                logger.info("✅ [WEBHOOK] Webhook de prueba procesado exitosamente");
                 return true;
             }
             
             // Obtener información del pago desde Mercado Pago
-            logger.info("🟢 [WEBHOOK] Llamando a Mercado Pago para obtener detalles del pago");
             Payment payment = getPaymentFromMercadoPago(paymentId);
             if (payment == null) {
                 logger.warn("🟡 [WEBHOOK] No se pudo obtener el pago desde Mercado Pago: {}. Esto puede ser normal para merchant_orders", paymentId);
-                // Para merchant_orders, no necesitamos obtener el pago, solo procesar la notificación
-                logger.info("✅ [WEBHOOK] Webhook procesado exitosamente (merchant_order)");
                 return true;
             }
             
-            logger.info("🟢 [WEBHOOK] Pago obtenido de Mercado Pago. Estado: {}", payment.getStatus());
-            
             // Procesar el pago según su estado
-            logger.info("🟢 [WEBHOOK] Procesando estado del pago");
             boolean result = processPaymentStatus(payment);
-            
-            logger.info("🟢 [WEBHOOK] Resultado del procesamiento: {}", result);
             return result;
             
         } catch (Exception e) {
@@ -348,22 +334,14 @@ public class MercadoPagoServiceImpl implements MercadoPagoService {
             transaction.setStatus(PaymentStatus.APPROVED);
             transaction.setUpdatedAt(new Date());
             paymentTransactionRepository.save(transaction);
-            logger.info("💰 [APPROVED] Transacción actualizada exitosamente");
             
             // SUMAR MONEDAS A LA CUENTA
             AccountMaster account = transaction.getAccount();
             Integer currentCoins = account.getTerraCoins();
             Integer newCoins = currentCoins + transaction.getCoinsAmount();
             
-            logger.info("💰 [APPROVED] Monedas actuales: {}, Monedas a agregar: {}, Nuevo total: {}", 
-                       currentCoins, transaction.getCoinsAmount(), newCoins);
-            
             account.setTerraCoins(newCoins);
             accountMasterRepository.save(account);
-            
-            logger.info("💰 [APPROVED] ✅ MONEDAS AGREGADAS EXITOSAMENTE");
-            logger.info("💰 [APPROVED] Cuenta: {}, Monedas anteriores: {}, Monedas agregadas: {}, Nuevo total: {}", 
-                       account.getId(), currentCoins, transaction.getCoinsAmount(), newCoins);
             
             return true;
             

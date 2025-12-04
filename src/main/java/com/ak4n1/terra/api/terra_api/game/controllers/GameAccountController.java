@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -38,8 +39,6 @@ public class GameAccountController {
             response.put("message", "No autenticado");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
         }
-        logger.debug("🎮 [GAME ACCOUNT] DTO código: {}", dto.getCreateCode());
-        logger.debug("🎮 [GAME ACCOUNT] DTO completo: {}", dto);
 
         try {
             AccountGame account = accountService.createAccount(dto, email);
@@ -61,7 +60,16 @@ public class GameAccountController {
 
     @PostMapping("/create-code")
     public ResponseEntity<Map<String, String>> sendCreateCode() {
-        String email = getEmailFromToken();  // Email desde token/session
+        String email = getEmailFromToken();
+        
+        if (email == null || email.isEmpty()) {
+            logger.warn("❌ [CREATE CODE] No token provided or email is empty");
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("status", "unauthorized");
+            errorResponse.put("message", "No token provided");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+        }
+        
         Map<String, String> response = accountService.generateAndSendCreateCode(email);
 
         return switch (response.get("status")) {
@@ -91,7 +99,6 @@ public class GameAccountController {
     @PostMapping("/reset-code")
     public ResponseEntity<?> sendResetCode(@RequestParam String accountName) {
         Map<String, String> response = accountService.generateAndSendCode(accountName);
-        logger.debug("🎮 [GAME ACCOUNT] Response Map: {}", response);
 
         String status = response.get("status");
         String message = response.get("message");
@@ -101,7 +108,6 @@ public class GameAccountController {
 
         switch (status) {
             case "success":
-                logger.info("🔐 [GAME ACCOUNT] Código generado para {}", accountName);
                 return ResponseEntity.ok(body); // 200 OK
             case "unauthorized":
                 return ResponseEntity.status(401).body(body); // 401 Unauthorized
@@ -113,8 +119,24 @@ public class GameAccountController {
 
     }
 
+    /**
+     * Obtiene el email del usuario autenticado desde el contexto de seguridad.
+     * 
+     * @return Email del usuario autenticado o null si no está autenticado
+     */
     public String getEmailFromToken() {
-        return SecurityContextHolder.getContext().getAuthentication().getName();
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || auth.getName().equals("anonymousUser")) {
+                logger.warn("❌ [GET EMAIL FROM TOKEN] No authentication found or anonymous user");
+                return null;
+            }
+            String email = auth.getName();
+            return email;
+        } catch (Exception e) {
+            logger.error("❌ [GET EMAIL FROM TOKEN] Error getting email from token: {}", e.getMessage());
+            return null;
+        }
     }
 
     @PostMapping("/changePassword")

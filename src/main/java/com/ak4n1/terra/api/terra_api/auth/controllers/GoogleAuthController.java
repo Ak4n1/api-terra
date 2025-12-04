@@ -17,6 +17,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -107,18 +108,24 @@ public class GoogleAuthController {
             String name = decodedToken.getName();
             String uid = decodedToken.getUid();
 
-            logger.info("✅ [GOOGLE AUTH] Token válido para: {}", email);
-
             AccountMaster user = findOrCreateUser(email, name, uid);
 
-            logger.info("👤 [GOOGLE AUTH] Usuario encontrado o creado: {} (ID: {})", user.getEmail(), user.getId());
+            // Verificar si la cuenta está desactivada
+            if (!user.isEnabled()) {
+                logger.warn("❌ [GOOGLE AUTH] Intento de login con cuenta desactivada: {}", email);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                        "error", "USER_DISABLED",
+                        "message", "Account disabled",
+                        "userMessage", "User account is disabled."
+                ));
+            }
 
             List<String> roles = user.getRoles().stream()
                     .map(r -> r.getName())
                     .toList();
 
             String token = Jwts.builder()
-                    .setSubject(email)
+                    .setSubject(String.valueOf(user.getId()))
                     .claim("authorities", roles)
                     .claim("authMethod", "google")
                     .setExpiration(new Date(System.currentTimeMillis() + TokenJwtConfig.ACCESS_TOKEN_EXPIRATION))
@@ -136,9 +143,9 @@ public class GoogleAuthController {
             activeToken.setDeviceType("WEB");
             activeTokenRepository.save(activeToken);
 
-            // Generar y guardar refresh token
+            // Generar y guardar refresh token (sub = userId)
             String refreshToken = Jwts.builder()
-                    .setSubject(email)
+                    .setSubject(String.valueOf(user.getId()))
                     .claim("type", "refresh")
                     .claim("authMethod", "google")
                     .claim("timestamp", System.currentTimeMillis())
@@ -171,21 +178,9 @@ public class GoogleAuthController {
             activity.setAction("Google Login");
             recentActivityRepository.save(activity);
 
-            // Configurar cookie access token
-            Cookie cookie = new Cookie("access_token", token);
-            cookie.setHttpOnly(true);
-            cookie.setSecure(com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig.USE_SECURE_COOKIES);
-            cookie.setPath("/");
-            cookie.setMaxAge((int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
-            httpResponse.addCookie(cookie);
-
-            // Configurar cookie refresh token
-            Cookie refreshCookie = new Cookie("refresh_token", refreshToken);
-            refreshCookie.setHttpOnly(true);
-            refreshCookie.setSecure(com.ak4n1.terra.api.terra_api.security.config.TokenJwtConfig.USE_SECURE_COOKIES);
-            refreshCookie.setPath("/");
-            refreshCookie.setMaxAge((int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
-            httpResponse.addCookie(refreshCookie);
+            // Configurar cookies según entorno
+            TokenJwtConfig.addCookie(httpResponse, "access_token", token, (int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
+            TokenJwtConfig.addCookie(httpResponse, "refresh_token", refreshToken, (int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
 
             return ResponseEntity.ok(Map.of(
                     "message", "Authentication successful with Google",
@@ -239,4 +234,5 @@ public class GoogleAuthController {
         }
     }
 
+    
 }

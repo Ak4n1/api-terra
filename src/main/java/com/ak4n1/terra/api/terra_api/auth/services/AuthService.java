@@ -66,4 +66,58 @@ public interface AuthService {
      */
     Map<String, Object> getCurrentUser(String email);
 
+    /**
+     * Cambia la contraseña del usuario autenticado.
+     * 
+     * <p>Para usuarios con password existente, requiere verificar la contraseña actual.
+     * Para usuarios sin password (OAuth), solo requiere la nueva contraseña.
+     * 
+     * @param email Email del usuario
+     * @param currentPassword Contraseña actual (requerida solo si el usuario tiene password)
+     * @param newPassword Nueva contraseña
+     * @return Map con el resultado (success, message)
+     */
+    Map<String, Object> changePassword(String email, String currentPassword, String newPassword);
+
+    /**
+     * Genera y envía un código de desactivación de cuenta al email especificado.
+     * 
+     * <p>El código tiene una validez de 5 minutos y se valida que no se haya
+     * enviado otro código recientemente.
+     * 
+     * @param email Email del usuario que solicita desactivar la cuenta
+     * @return Map con el estado de la operación ("success" o "forbidden") y mensaje
+     */
+    Map<String, String> generateAndSendDeactivationCode(String email);
+
+    /**
+     * Verifica el código de desactivación y desactiva la cuenta del usuario.
+     * 
+     * <p>El código debe estar activo y no haber expirado. Después de la desactivación,
+     * el código se invalida automáticamente. Registra la desactivación en la tabla de auditoría.
+     * 
+     * @param email Email del usuario
+     * @param code Código de desactivación de 6 dígitos
+     * @param ipAddress Dirección IP del cliente para auditoría
+     * @return Map con el estado de la operación ("success", "unauthorized", "expired" o "error") y mensaje
+     */
+    Map<String, Object> verifyDeactivationCode(String email, String code, String ipAddress);
+
+    /**
+     * Actualiza las preferencias de notificaciones del usuario.
+     * 
+     * @param email Email del usuario
+     * @param preferences Map con las preferencias de notificaciones
+     * @return Map con el resultado (success, message)
+     */
+    Map<String, Object> updateNotificationPreferences(String email, Map<String, Boolean> preferences);
+
+    /**
+     * Solicita el rol de streamer para el usuario autenticado.
+     * 
+     * @param email Email del usuario
+     * @return Map con el resultado (success, message)
+     */
+    Map<String, Object> requestStreamerRole(String email);
+
 }

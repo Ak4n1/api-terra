@@ -172,9 +172,9 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                     .filter(token -> deviceType.equals(token.getDeviceType()))
                     .forEach(token -> refreshTokenRepo.delete(token));
                 
-                // Generar token inicial
+                // Generar token inicial (sub = userId, evitar PII en JWT)
                 String token = Jwts.builder()
-                        .setSubject(email)
+                        .setSubject(String.valueOf(user.getId()))
                         .claim("authorities", roles)
                         .setExpiration(new Date(System.currentTimeMillis() + TokenJwtConfig.ACCESS_TOKEN_EXPIRATION))
                         .signWith(TokenJwtConfig.SECRET_KEY)
@@ -186,7 +186,7 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                     logger.warn("⚠️ [TOKEN DUPLICATE] Token ya existe, regenerando...");
                     // Regenerar token único
                     token = Jwts.builder()
-                            .setSubject(email)
+                            .setSubject(String.valueOf(user.getId()))
                             .claim("authorities", roles)
                             .claim("timestamp", System.currentTimeMillis()) // Agregar timestamp para unicidad
                             .setExpiration(new Date(System.currentTimeMillis() + TokenJwtConfig.ACCESS_TOKEN_EXPIRATION))
@@ -213,7 +213,7 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                 
                 activityRepo.save(activity);
                 
-                // Configurar cookie con el token generado
+                // Enviar cookie con SameSite=None; Secure
                 Cookie cookie = new Cookie("access_token", token);
                 cookie.setHttpOnly(true);
                 cookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
@@ -221,9 +221,9 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                 cookie.setMaxAge((int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
                 res.addCookie(cookie);
 
-                // Generar y configurar refresh token
+                // Generar y configurar refresh token (sub = userId)
                 String refreshToken = Jwts.builder()
-                        .setSubject(email)
+                        .setSubject(String.valueOf(user.getId()))
                         .claim("type", "refresh")
                         .claim("timestamp", System.currentTimeMillis())
                         .setExpiration(new Date(System.currentTimeMillis() + TokenJwtConfig.REFRESH_TOKEN_EXPIRATION))
@@ -257,7 +257,7 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                     Thread.sleep(100); // Pequeña pausa
                     
                     String retryToken = Jwts.builder()
-                            .setSubject(email)
+                            .setSubject(String.valueOf(user.getId()))
                             .claim("authorities", roles)
                             .claim("timestamp", System.currentTimeMillis())
                             .setExpiration(new Date(System.currentTimeMillis() + TokenJwtConfig.ACCESS_TOKEN_EXPIRATION))
@@ -274,12 +274,12 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                     logger.info("✅ [TOKEN RECUPERADO] Token guardado después de limpieza");
                     
                     // Configurar cookie con el token de retry
-                    Cookie cookie = new Cookie("access_token", retryToken);
-                    cookie.setHttpOnly(true);
-                    cookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
-                    cookie.setPath("/");
-                    cookie.setMaxAge((int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
-                    res.addCookie(cookie);
+                    Cookie retryCookie = new Cookie("access_token", retryToken);
+                    retryCookie.setHttpOnly(true);
+                    retryCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
+                    retryCookie.setPath("/");
+                    retryCookie.setMaxAge((int) (TokenJwtConfig.ACCESS_TOKEN_EXPIRATION / 1000));
+                    res.addCookie(retryCookie);
                     
                     // Generar refresh token para retry también
                     String refreshToken = Jwts.builder()
@@ -300,12 +300,12 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
                     refreshTokenEntity.setRevoked(false);
                     refreshTokenRepo.save(refreshTokenEntity);
 
-                    Cookie refreshCookie = new Cookie("refresh_token", refreshToken);
-                    refreshCookie.setHttpOnly(true);
-                    refreshCookie.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
-                    refreshCookie.setPath("/");
-                    refreshCookie.setMaxAge((int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
-                    res.addCookie(refreshCookie);
+                    Cookie retryRefresh = new Cookie("refresh_token", refreshToken);
+                    retryRefresh.setHttpOnly(true);
+                    retryRefresh.setSecure(TokenJwtConfig.USE_SECURE_COOKIES);
+                    retryRefresh.setPath("/");
+                    retryRefresh.setMaxAge((int) (TokenJwtConfig.REFRESH_TOKEN_EXPIRATION / 1000));
+                    res.addCookie(retryRefresh);
                     
                 } catch (Exception retryException) {
                     logger.error("❌ [TOKEN CRITICAL] Error crítico guardando token: {}", retryException.getMessage(), retryException);
@@ -322,6 +322,16 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
 
         res.setContentType(TokenJwtConfig.CONTENT_TYPE);
         new ObjectMapper().writeValue(res.getOutputStream(), body);
+    }
+
+    private static void addCookie(HttpServletResponse res, String name, String value, int maxAgeSeconds) {
+        String cookie = name + "=" + value
+                + "; Path=/"
+                + "; HttpOnly"
+                + "; Secure"
+                + "; SameSite=None"
+                + "; Max-Age=" + maxAgeSeconds;
+        res.addHeader("Set-Cookie", cookie);
     }
 
     /**

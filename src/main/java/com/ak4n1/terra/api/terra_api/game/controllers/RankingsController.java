@@ -1,7 +1,5 @@
 package com.ak4n1.terra.api.terra_api.game.controllers;
 
-import com.ak4n1.terra.api.terra_api.game.dto.PlayerRanking;
-import com.ak4n1.terra.api.terra_api.game.dto.RankingClanResponseDTO;
 import com.ak4n1.terra.api.terra_api.game.dto.RankingPKResponseDTO;
 import com.ak4n1.terra.api.terra_api.game.dto.RankingPvPResponseDTO;
 import com.ak4n1.terra.api.terra_api.game.services.RankingsService;
@@ -31,9 +29,5 @@ public class RankingsController {
         return response;
     }
 
-    @GetMapping("/top-clans")
-    public RankingClanResponseDTO getTopClans() {
-        return this.rankingsService.getTopClans();
-    }
 
 }

@@ -60,6 +60,9 @@ public class CharacterResponseDTO {
     private Integer faction;
     private Integer pcCafePoints;
     private Integer totalOnlineTime;
+    private String expPercent; // Porcentaje de XP formateado (ej: "65,52%")
+    private Boolean isMage; // true si es magician, false si es soldier/warrior
+    private String classType; // "magician" o "soldier" - para seleccionar icono de cara
 
     // Getters y setters
 
@@ -509,5 +512,29 @@ public class CharacterResponseDTO {
 
     public void setPcCafePoints(Integer pcCafePoints) {
         this.pcCafePoints = pcCafePoints;
+    }
+    
+    public String getExpPercent() {
+        return expPercent;
+    }
+    
+    public void setExpPercent(String expPercent) {
+        this.expPercent = expPercent;
+    }
+    
+    public Boolean getIsMage() {
+        return isMage;
+    }
+    
+    public void setIsMage(Boolean isMage) {
+        this.isMage = isMage;
+    }
+    
+    public String getClassType() {
+        return classType;
+    }
+    
+    public void setClassType(String classType) {
+        this.classType = classType;
     }
 }

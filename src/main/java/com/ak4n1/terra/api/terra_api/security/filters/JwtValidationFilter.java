@@ -141,8 +141,8 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
                     .build()
                     .parseClaimsJws(token)
                     .getBody();
-
-            String email = claims.getSubject();
+            // sub ahora es userId, no email
+            String userIdFromSub = claims.getSubject();
 
             // SEGUNDO: Verificar en BD (solo si JWT es válido)
             Optional<ActiveToken> activeTokenOpt = tokenRepo.findByToken(token);
@@ -169,28 +169,27 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
             }
 
             if (!user.isEnabled()) {
-                logger.warn("❌ [JWT] Usuario deshabilitado: {}", email);
+                logger.warn("❌ [JWT] Usuario deshabilitado: {}", user.getEmail());
                 // Revocar tokens del usuario
                 tokenRepo.delete(activeToken);
                 throw new UserDisabledException("Usuario deshabilitado");
             }
 
             if (!user.isEmailVerified()) {
-                logger.warn("❌ [JWT] Email no verificado: {}", email);
+                logger.warn("❌ [JWT] Email no verificado: {}", user.getEmail());
                 // Revocar tokens del usuario
                 tokenRepo.delete(activeToken);
                 throw new EmailNotVerifiedException("Email no verificado");
             }
 
             List<String> roles = (List<String>) claims.get("authorities");
-            logger.debug("👮 [JWT] Roles del usuario: {}", roles);
 
+            // Establecer principal = email para compatibilidad con endpoints existentes
             var auth = new UsernamePasswordAuthenticationToken(
-                    claims.getSubject(), null,
+                    user.getEmail(), null,
                     roles.stream().map(SimpleGrantedAuthority::new).collect(Collectors.toList()));
 
             SecurityContextHolder.getContext().setAuthentication(auth);
-            logger.debug("✅ [JWT] Contexto de seguridad seteado correctamente.");
             chain.doFilter(req, res);
 
         } catch (UserDisabledException e) {

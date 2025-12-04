@@ -42,7 +42,6 @@ public class ItemCatalogService {
     public Optional<ItemCatalogDTO> getItemById(int id) {
         ItemTemplate template = itemTable.getTemplate(id);
         if (template == null) {
-            logger.debug("Item {} no encontrado", id);
             return Optional.empty();
         }
         return Optional.of(ItemCatalogDTO.fromItemTemplate(template));
@@ -54,7 +53,6 @@ public class ItemCatalogService {
      * @return Lista completa de DTOs de todos los items del catálogo
      */
     public List<ItemCatalogDTO> getAllItems() {
-        logger.debug("Obteniendo todos los items del catálogo");
         Collection<ItemTemplate> templates = itemTable.getAllItems();
         
         return templates.stream()
@@ -74,7 +72,6 @@ public class ItemCatalogService {
             return List.of();
         }
         
-        logger.debug("Buscando items con nombre: {}", name);
         Collection<ItemTemplate> templates = itemTable.searchByName(name);
         
         return templates.stream()
@@ -91,7 +88,6 @@ public class ItemCatalogService {
      * @return Lista de DTOs de items que coinciden con el tipo especificado
      */
     public List<ItemCatalogDTO> getItemsByType(String type) {
-        logger.debug("Filtrando items por tipo: {}", type);
         Collection<ItemTemplate> templates = itemTable.getAllItems();
         
         return templates.stream()
@@ -109,7 +105,6 @@ public class ItemCatalogService {
      * @return Lista de DTOs de items que coinciden con el grade especificado
      */
     public List<ItemCatalogDTO> getItemsByGrade(String grade) {
-        logger.debug("Filtrando items por grade: {}", grade);
         Collection<ItemTemplate> templates = itemTable.getAllItems();
         
         return templates.stream()
@@ -127,9 +122,7 @@ public class ItemCatalogService {
      * @see com.ak4n1.terra.api.terra_api.game.l2j.data.ItemTable#reload()
      */
     public void reloadCatalog() {
-        logger.info("Recargando catálogo de items...");
         itemTable.reload();
-        logger.info("Catálogo recargado exitosamente");
     }
     
     /**

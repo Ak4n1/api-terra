@@ -2,6 +2,8 @@ package com.ak4n1.terra.api.terra_api.game.services;
 
 import com.ak4n1.terra.api.terra_api.game.dto.CharacterResponseDTO;
 import com.ak4n1.terra.api.terra_api.game.entities.Character;
+import com.ak4n1.terra.api.terra_api.game.l2j.data.ExperienceTable;
+import com.ak4n1.terra.api.terra_api.game.l2j.util.ClassTypeUtil;
 import com.ak4n1.terra.api.terra_api.game.repositories.AccountGameRepository;
 import com.ak4n1.terra.api.terra_api.game.repositories.CharacterRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +44,9 @@ public class CharacterServiceImpl implements CharacterService {
 
     @Autowired
     private AccountGameRepository accountGameRepository;
+    
+    @Autowired
+    private ExperienceTable experienceTable;
 
     /**
      * {@inheritDoc}
@@ -238,6 +243,18 @@ public class CharacterServiceImpl implements CharacterService {
         dto.setLanguage(character.getLanguage());
         dto.setFaction(character.getFaction());
         dto.setPcCafePoints(character.getPcCafePoints());
+        
+        // Calcular porcentaje de XP en el servidor
+        long exp = character.getExp() != null ? character.getExp() : 0L;
+        int level = character.getLevel() != null ? character.getLevel() : 1;
+        String expPercent = experienceTable.calculateExpPercent(exp, level);
+        dto.setExpPercent(expPercent);
+        
+        // Determinar tipo de clase (soldier/magician) basado en baseClass
+        Integer baseClass = character.getBaseClass();
+        boolean isMage = ClassTypeUtil.isMage(baseClass);
+        dto.setIsMage(isMage);
+        dto.setClassType(ClassTypeUtil.getClassType(baseClass));
 
         return dto;
     }

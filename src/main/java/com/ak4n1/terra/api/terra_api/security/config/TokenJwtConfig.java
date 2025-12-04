@@ -7,6 +7,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 import java.nio.charset.StandardCharsets;
+import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Configuración para tokens JWT.
@@ -70,11 +71,27 @@ public class TokenJwtConfig {
      * Tiempo de expiración del access token en milisegundos.
      * Valor: 2 horas (7,200,000 ms)
      */
-    public static final long ACCESS_TOKEN_EXPIRATION = 2 * 60 * 60 * 1000L; // 2 horas en milisegundos
+    public static final long ACCESS_TOKEN_EXPIRATION = 7200 * 1000L; // 2 horas
     
     /**
      * Tiempo de expiración del refresh token en milisegundos.
      * Valor: 7 días (604,800,000 ms)
      */
     public static final long REFRESH_TOKEN_EXPIRATION = 604800000L; // 7 días
+
+    /**
+     * Helper centralizado para setear cookies según entorno.
+     * - Si USE_SECURE_COOKIES=true (HTTPS/prod): SameSite=None; Secure
+     * - Si es dev HTTP/same-origin: SameSite=Lax; sin Secure
+     */
+    public static void addCookie(HttpServletResponse response, String name, String value, int maxAgeSeconds) {
+        String sameSite = USE_SECURE_COOKIES ? "None" : "Lax";
+        String cookie = name + "=" + value
+                + "; Path=/"
+                + "; HttpOnly"
+                + (USE_SECURE_COOKIES ? "; Secure" : "")
+                + "; SameSite=" + sameSite
+                + "; Max-Age=" + maxAgeSeconds;
+        response.addHeader("Set-Cookie", cookie);
+    }
 }

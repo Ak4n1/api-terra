@@ -25,8 +25,7 @@ public abstract class ItemTemplate {
     protected int _price;
     protected String _type;  // "Weapon", "Armor", "EtcItem"
     protected String _grade; // "None", "D", "C", "B", "A", "S"
-    protected long _bodyPart;
-    protected String _bodyPartName; // "rhand", "chest", "legs", etc.
+    protected String _bodyPart; // "rhand", "chest", "legs", "talisman", "brooch_jewel", "lbracelet", etc.
     protected boolean _stackable;
     protected boolean _sellable;
     protected boolean _tradeable;
@@ -34,6 +33,7 @@ public abstract class ItemTemplate {
     protected int _crystalCount;
     protected String _crystalType;
     protected String _materialType;
+    protected String _defaultAction; // "EQUIP", "SKILL_REDUCE", "PEEL", etc.
     
     /**
      * Constructor protegido que inicializa el ItemTemplate desde un StatSet.
@@ -55,8 +55,9 @@ public abstract class ItemTemplate {
         _crystalCount = set.getInt("crystal_count", 0);
         _crystalType = set.getString("crystal_type", "none");
         _materialType = set.getString("material", "");
-        _bodyPart = set.getLong("bodypart", 0L);
-        _bodyPartName = set.getString("bodypart_name", "");
+        // bodypart siempre viene como string en los XMLs ("talisman", "brooch_jewel", "lbracelet", etc.)
+        _bodyPart = set.getString("bodypart", "");
+        _defaultAction = set.getString("default_action", "");
     }
     
     // Getters esenciales
@@ -69,7 +70,50 @@ public abstract class ItemTemplate {
     }
     
     public String getIcon() {
-        return _icon;
+        // Limpiar prefijos conocidos para retornar solo el nombre del archivo PNG
+        if (_icon == null || _icon.isEmpty()) {
+            return "";
+        }
+        
+        // Remover prefijos y subcarpetas de todos los paquetes UTX
+        // Patrón: Paquete.Subcarpeta.NombreIcono -> NombreIcono
+        String cleanIcon = _icon;
+        
+        // BranchSys3: subcarpetas (Icon, icon, icon1, iconArmar, iconArmor, lcon)
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys3\\.Icon[A-Za-z]*\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys3\\.icon1\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys3\\.iconArmar\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys3\\.iconArmor\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys3\\.icon\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys3\\.lcon\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys3\\.", "");
+        
+        // BranchSys2: subcarpetas (Icon, icon, icon2, lcon)
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys2\\.Icon\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys2\\.icon2\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys2\\.icon\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys2\\.lcon\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys2\\.", "");
+        
+        // BranchSys: subcarpetas (Icon, icon)
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys\\.Icon\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys\\.icon\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchSys\\.", "");
+        
+        // BranchIcon: subcarpetas (Icon, icon)
+        cleanIcon = cleanIcon.replaceFirst("^BranchIcon\\.Icon\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchIcon\\.icon\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^BranchIcon\\.", "");
+        
+        // br_cashtex: subcarpeta (item)
+        cleanIcon = cleanIcon.replaceFirst("^br_cashtex\\.item\\.", "");
+        cleanIcon = cleanIcon.replaceFirst("^br_cashtex\\.", "");
+        
+        // icon: sin subcarpetas, solo remover prefijo
+        cleanIcon = cleanIcon.replaceFirst("^icon\\.", "");
+        
+        // Convertir a lowercase para consistencia en sistemas case-sensitive
+        return cleanIcon.toLowerCase();
     }
     
     public int getWeight() {
@@ -88,12 +132,8 @@ public abstract class ItemTemplate {
         return _grade;
     }
     
-    public long getBodyPart() {
-        return _bodyPart;
-    }
-    
-    public String getBodyPartName() {
-        return _bodyPartName;
+    public String getBodyPart() {
+        return _bodyPart != null ? _bodyPart : "";
     }
     
     public boolean isStackable() {
@@ -122,6 +162,10 @@ public abstract class ItemTemplate {
     
     public String getMaterialType() {
         return _materialType;
+    }
+    
+    public String getDefaultAction() {
+        return _defaultAction != null ? _defaultAction : "";
     }
     
     /**

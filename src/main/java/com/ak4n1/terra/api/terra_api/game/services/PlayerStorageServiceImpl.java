@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,9 +49,12 @@ public class PlayerStorageServiceImpl implements PlayerStorageService {
     /**
      * {@inheritDoc}
      * 
+     * <p>Este método es read-only y no modifica datos en la base de datos.
+     * 
      * @param playerId ID del personaje (charId)
      * @return Lista de DTOs con todos los items del personaje
      */
+    @Transactional(readOnly = true)
     @Override
     public List<ItemDTO> getItemsByPlayerId(int playerId) {
         List<Item> items = itemRepository.findByOwnerId(playerId);
@@ -63,11 +67,15 @@ public class PlayerStorageServiceImpl implements PlayerStorageService {
             String name = "Unknown";
             String type = "Unknown";
             String icon = "";
+            String defaultAction = "";
+            String bodyPart = "";
             
             if (template != null) {
                 name = template.getName();
                 type = template.getItemType();
                 icon = template.getIcon();
+                defaultAction = template.getDefaultAction();
+                bodyPart = template.getBodyPart();
             } else {
                 logger.warn("⚠️ Item {} no encontrado en catálogo", item.getItemId());
             }
@@ -85,19 +93,13 @@ public class PlayerStorageServiceImpl implements PlayerStorageService {
             dto.setLocationData(item.getLocData() != null ? item.getLocData() : 0);
             dto.setName(name);
             dto.setType(type);
-            
-            // ✅ ARREGLADO: Enviar JSON correcto para que el frontend encuentre el icon
-            // Frontend busca: item.attributes.icon
-            String attributesJson = String.format("{\"icon\":\"%s\",\"name\":\"%s\"}", icon, name);
-            String statsJson = String.format("{\"type\":\"%s\"}", type);
-            
-            dto.setRawAttributes(attributesJson);
-            dto.setRawStats(statsJson);
+            dto.setDefaultAction(defaultAction);
+            dto.setBodyPart(bodyPart);
+            dto.setIcon(icon); // ✅ SIMPLIFICADO: Icon directamente en el nivel raíz
 
             itemDTOList.add(dto);
         }
 
-        logger.debug("✅ Obtenidos {} items para jugador {}", itemDTOList.size(), playerId);
         return itemDTOList;
     }
 
@@ -113,8 +115,6 @@ public class PlayerStorageServiceImpl implements PlayerStorageService {
     @Deprecated
     public List<ItemDTO> getTest(int itemId) {
         // ✅ SIMPLIFICADO: Ya no es necesario cargar items manualmente
-        logger.info("ℹ️ Los items ahora se cargan automáticamente desde XMLs al iniciar la API");
-        logger.info("📊 Total items en catálogo: {}", itemTable.getItemCount());
         
         ItemDTO responseDto = new ItemDTO();
         responseDto.setItemId(0);
@@ -125,8 +125,7 @@ public class PlayerStorageServiceImpl implements PlayerStorageService {
         responseDto.setEnchantLevel(0);
         responseDto.setLocation("MEMORY");
         responseDto.setLocationData(0);
-        responseDto.setRawAttributes("Items cargados en memoria desde XMLs");
-        responseDto.setRawStats("Total: " + itemTable.getItemCount());
+
         
         return List.of(responseDto);
     }

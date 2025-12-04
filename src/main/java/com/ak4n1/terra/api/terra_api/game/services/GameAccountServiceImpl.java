@@ -27,6 +27,7 @@ import java.sql.Timestamp;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Implementación del servicio de gestión de cuentas de juego.
@@ -173,13 +174,36 @@ public class GameAccountServiceImpl implements GameAccountService {
 
         String code = CodeGenerator.generateSixDigitCode();
         account.setResetCode(code);
-        account.setResetExpire(new Timestamp(now.getTime() + 15 * 60 * 1000)); // 15 min
+        account.setResetExpire(new Timestamp(now.getTime() + 5 * 60 * 1000)); // 5 min
         accountRepo.save(account);
 
-        String subject = "Your Code to Reset Game Account Password:: " + login;
+        String subject = "Reset Password Code for " + login + " - L2 Terra";
         String body = emailContent.buildGameAccountPasswordResetEmailBody(code, login);
 
-        emailService.sendEmail(account.getEmail(), subject, body);
+        // Enviar email de forma asíncrona
+        final String finalLogin = login;
+        final String finalCode = code;
+        emailService.sendEmail(account.getEmail(), subject, body)
+                .exceptionally(ex -> {
+                    logger.error("❌ [GAME ACCOUNT] Error enviando código de reset a {}: {}", account.getEmail(), ex.getMessage());
+                    // ROLLBACK: Si el email falla, eliminar el código para permitir nuevo intento
+                    try {
+                        Optional<AccountGame> accountOpt = accountRepo.findByLogin(finalLogin);
+                        if (accountOpt.isPresent()) {
+                            AccountGame accountToRollback = accountOpt.get();
+                            // Solo eliminar si el código es el mismo (no fue usado)
+                            if (finalCode.equals(accountToRollback.getResetCode())) {
+                                accountToRollback.setResetCode(null);
+                                accountToRollback.setResetExpire(null);
+                                accountRepo.save(accountToRollback);
+                                logger.warn("🔄 [GAME ACCOUNT] Código de reset eliminado por fallo en envío de email para: {}", finalLogin);
+                            }
+                        }
+                    } catch (Exception rollbackEx) {
+                        logger.error("❌ [GAME ACCOUNT] Error haciendo rollback del código para {}: {}", finalLogin, rollbackEx.getMessage());
+                    }
+                    return null;
+                });
 
         Map<String, String> map = new HashMap<>();
         map.put("status", "success"); // 200
@@ -222,14 +246,35 @@ public class GameAccountServiceImpl implements GameAccountService {
         AccountCreateCode codeEntry = existing != null ? existing : new AccountCreateCode();
         codeEntry.setEmail(email);
         codeEntry.setCreateCode(code);
-        codeEntry.setCreateCodeExpire(new Timestamp(now.getTime() + 15 * 60 * 1000)); // 15 min
+        codeEntry.setCreateCodeExpire(new Timestamp(now.getTime() + 5 * 60 * 1000)); // 5 min
 
         accountCreateCodeRepository.save(codeEntry);
 
         String subject = "Account Creation Code";
         String body = emailContent.buildGameAccountCreationCodeEmailBody(code);
 
-        emailService.sendEmail(email, subject, body);
+        // Enviar email de forma asíncrona
+        final String finalEmail = email;
+        final String finalCreateCode = code;
+        emailService.sendEmail(email, subject, body)
+                .exceptionally(ex -> {
+                    logger.error("❌ [GAME ACCOUNT] Error enviando código de creación a {}: {}", finalEmail, ex.getMessage());
+                    // ROLLBACK: Si el email falla, eliminar el código para permitir nuevo intento
+                    try {
+                        Optional<AccountCreateCode> codeOpt = accountCreateCodeRepository.findByEmail(finalEmail);
+                        if (codeOpt.isPresent()) {
+                            AccountCreateCode codeToRollback = codeOpt.get();
+                            // Solo eliminar si el código es el mismo (no fue usado)
+                            if (finalCreateCode.equals(codeToRollback.getCreateCode())) {
+                                accountCreateCodeRepository.delete(codeToRollback);
+                                logger.warn("🔄 [GAME ACCOUNT] Código de creación eliminado por fallo en envío de email para: {}", finalEmail);
+                            }
+                        }
+                    } catch (Exception rollbackEx) {
+                        logger.error("❌ [GAME ACCOUNT] Error haciendo rollback del código de creación para {}: {}", finalEmail, rollbackEx.getMessage());
+                    }
+                    return null;
+                });
 
         Map<String, String> map = new HashMap<>();
         map.put("status", "success");

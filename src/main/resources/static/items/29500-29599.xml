@@ -305,7 +305,7 @@
 	</item>
 	<item id="29520" name="Terra Coin" type="EtcItem">
 		<!-- Used for purchasing various items through Dimensional Merchants. Cannot be exchanged, dropped, or sold. -->
-		<set name="icon" val="BranchIcon.Icon.etc_vip_coin_i00" />
+		<set name="icon" val="L2EssenceCommunity.terra.terra_coin" />
 		<set name="material" val="LIQUID" />
 		<set name="is_tradable" val="true" />
 		<set name="is_dropable" val="false" />

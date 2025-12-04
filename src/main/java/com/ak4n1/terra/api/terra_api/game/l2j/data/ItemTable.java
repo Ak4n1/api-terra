@@ -9,9 +9,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 /**
  * Tabla de items simplificada del core L2J.
@@ -39,11 +45,16 @@ public class ItemTable {
     
     private static final Logger logger = LoggerFactory.getLogger(ItemTable.class);
     
-    @Value("${l2j.items.path:D:/Terra/L2J_Mobius_Classic_3.0_TheKamael/dist/game/data/stats/items}")
+    @Value("${l2j.items.path:classpath:static/items}")
     private String itemsPath;
     
+    private final ResourceLoader resourceLoader;
     private ItemTemplate[] _allTemplates;
     private final Map<Integer, ItemTemplate> _itemsMap = new HashMap<>();
+    
+    public ItemTable(ResourceLoader resourceLoader) {
+        this.resourceLoader = resourceLoader;
+    }
     
     /**
      * Inicializa y carga todos los items desde los archivos XML.
@@ -67,58 +78,72 @@ public class ItemTable {
      * búsqueda rápida por ID.
      */
     private void loadItems() {
-        File itemsDir = new File(itemsPath);
-        
-        if (!itemsDir.exists() || !itemsDir.isDirectory()) {
-            logger.error("❌ La ruta de items no existe o no es un directorio: {}", itemsPath);
-            return;
-        }
-        
-        File[] xmlFiles = itemsDir.listFiles((dir, name) -> name.endsWith(".xml"));
-        
-        if (xmlFiles == null || xmlFiles.length == 0) {
-            logger.warn("⚠️ No se encontraron archivos XML en: {}", itemsPath);
-            return;
-        }
-        
-        logger.info("📁 Encontrados {} archivos XML para procesar", xmlFiles.length);
-        
-        int totalItems = 0;
-        int highestId = 0;
-        
-        // Parsear todos los archivos
-        for (File xmlFile : xmlFiles) {
-            try {
-                Map<Integer, ItemTemplate> parsedItems = ItemXmlParser.parseFile(xmlFile);
-                
-                for (Map.Entry<Integer, ItemTemplate> entry : parsedItems.entrySet()) {
-                    int itemId = entry.getKey();
-                    ItemTemplate item = entry.getValue();
-                    
-                    // Guardar en el mapa
-                    _itemsMap.put(itemId, item);
-                    
-                    // Actualizar el ID más alto
-                    if (itemId > highestId) {
-                        highestId = itemId;
-                    }
-                }
-                
-                totalItems += parsedItems.size();
-                logger.debug("✅ Archivo {} procesado: {} items", xmlFile.getName(), parsedItems.size());
-                
-            } catch (Exception e) {
-                logger.error("❌ Error procesando archivo {}: {}", xmlFile.getName(), e.getMessage());
+        try {
+            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver(resourceLoader);
+            String pattern = itemsPath.startsWith("classpath:") 
+                ? itemsPath.replace("classpath:", "classpath:") + "/*.xml"
+                : itemsPath + "/*.xml";
+            
+            Resource[] resources = resolver.getResources(pattern);
+            
+            if (resources.length == 0) {
+                logger.warn("⚠️ No se encontraron archivos XML en: {}", itemsPath);
+                return;
             }
+            
+            logger.info("📁 Encontrados {} archivos XML para procesar", resources.length);
+            
+            int totalItems = 0;
+            int highestId = 0;
+            
+            // Parsear todos los archivos
+            for (Resource resource : resources) {
+                try {
+                    String fileName = resource.getFilename() != null ? resource.getFilename() : "unknown.xml";
+                    Map<Integer, ItemTemplate> parsedItems;
+                    
+                    // Intentar usar File si está disponible (desarrollo)
+                    try {
+                        File xmlFile = resource.getFile();
+                        parsedItems = ItemXmlParser.parseFile(xmlFile);
+                    } catch (IOException e) {
+                        // Si está dentro del JAR, usar InputStream (producción)
+                        try (InputStream inputStream = resource.getInputStream()) {
+                            parsedItems = ItemXmlParser.parseFile(inputStream, fileName);
+                        }
+                    }
+                    
+                    for (Map.Entry<Integer, ItemTemplate> entry : parsedItems.entrySet()) {
+                        int itemId = entry.getKey();
+                        ItemTemplate item = entry.getValue();
+                        
+                        // Guardar en el mapa
+                        _itemsMap.put(itemId, item);
+                        
+                        // Actualizar el ID más alto
+                        if (itemId > highestId) {
+                            highestId = itemId;
+                        }
+                    }
+                    
+                    totalItems += parsedItems.size();
+                    
+                } catch (Exception e) {
+                    String fileName = resource.getFilename() != null ? resource.getFilename() : "unknown.xml";
+                    logger.error("❌ Error procesando archivo {}: {}", fileName, e.getMessage());
+                }
+            }
+            
+            // Construir el array indexado para búsqueda O(1)
+            buildFastLookupTable(highestId);
+            
+            logger.info("🎉 Carga de items completada:");
+            logger.info("   📊 Total items cargados: {}", totalItems);
+            logger.info("   🔢 ID más alto: {}", highestId);
+            logger.info("   💾 Items en memoria: {}", _itemsMap.size());
+        } catch (Exception e) {
+            logger.error("❌ Error al cargar items: {}", e.getMessage(), e);
         }
-        
-        // Construir el array indexado para búsqueda O(1)
-        buildFastLookupTable(highestId);
-        
-        logger.info("🎉 Carga de items completada:");
-        logger.info("   📊 Total items cargados: {}", totalItems);
-        logger.info("   🔢 ID más alto: {}", highestId);
-        logger.info("   💾 Items en memoria: {}", _itemsMap.size());
     }
     
     /**

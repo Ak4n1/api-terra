@@ -8,6 +8,7 @@ import com.ak4n1.terra.api.terra_api.game.repositories.CharacterOfflineTradeRepo
 import com.ak4n1.terra.api.terra_api.game.repositories.CharacterOfflineTradeItemRepository;
 import com.ak4n1.terra.api.terra_api.game.repositories.ItemRepository;
 import com.ak4n1.terra.api.terra_api.game.l2j.data.ItemTable;
+import com.ak4n1.terra.api.terra_api.game.l2j.data.MapRegionTable;
 import com.ak4n1.terra.api.terra_api.game.l2j.model.item.ItemTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +20,11 @@ import com.ak4n1.terra.api.terra_api.game.dto.OfflineStoreItemDTO;
 import com.ak4n1.terra.api.terra_api.game.entities.Character;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Implementación del servicio de mercado offline.
@@ -41,6 +45,9 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
 
     @Autowired
     private ItemTable itemTable;
+
+    @Autowired
+    private MapRegionTable mapRegionTable;
 
     @Autowired
     private CharacterRepository characterRepository;
@@ -65,6 +72,12 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
         List<OfflineStoreDTO> result = new ArrayList<>();
 
         for (CharacterOfflineTrade trade : trades) {
+            // Filtrar solo tipos 1 (SELL), 3 (BUY) y 8 (PACKAGE_SELL)
+            byte storeType = trade.getType();
+            if (storeType != 1 && storeType != 3 && storeType != 8) {
+                continue; // Saltar tipos que no queremos mostrar
+            }
+
             List<CharacterOfflineTradeItem> tradeItems = itemRepo.findByCharId(trade.getCharId());
             List<OfflineStoreItemDTO> itemsDTO = new ArrayList<>();
 
@@ -73,7 +86,8 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
                 itemDTO.setCount(item.getCount());
                 itemDTO.setPrice(item.getPrice());
 
-                if (trade.getType() == 1) {
+                // Tipo 1 (SELL) y Tipo 8 (PACKAGE_SELL) - ambos tienen items físicos con enchant/time
+                if (storeType == 1 || storeType == 8) {
                     Optional<Item> itemEntityOpt = itemsRepo.findById(item.getItemId());
                     if (itemEntityOpt.isPresent()) {
                         Item itemEntity = itemEntityOpt.get();
@@ -90,16 +104,14 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
                     if (template != null) {
                         itemDTO.setName(template.getName());
                         itemDTO.setType(template.getItemType());
-                        // Formato JSON para que el frontend encuentre el icon
-                        String attributesJson = String.format("{\"icon\":\"%s\",\"name\":\"%s\"}", 
-                            template.getIcon(), template.getName());
-                        itemDTO.setAttributes(attributesJson);
-                        itemDTO.setStats(template.getGrade());
+                        itemDTO.setIcon(template.getIcon()); // ✅ SIMPLIFICADO: Icon directamente en el nivel raíz
+                        itemDTO.setGrade(template.getGrade()); // ✅ SIMPLIFICADO: Grade directamente en el nivel raíz
                     } else {
                         logger.warn("Item {} no encontrado en catálogo", itemDTO.getItemId());
                     }
                 }
-                if (trade.getType() == 3) {
+                // Tipo 3 (BUY) - el jugador quiere comprar, no tiene items físicos
+                else if (storeType == 3) {
                     itemDTO.setItemId(item.getItemId());
 
                     // ✅ NUEVO: Usar ItemTable en memoria
@@ -107,11 +119,8 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
                     if (template != null) {
                         itemDTO.setName(template.getName());
                         itemDTO.setType(template.getItemType());
-                        // Formato JSON para que el frontend encuentre el icon
-                        String attributesJson = String.format("{\"icon\":\"%s\",\"name\":\"%s\"}", 
-                            template.getIcon(), template.getName());
-                        itemDTO.setAttributes(attributesJson);
-                        itemDTO.setStats(template.getGrade());
+                        itemDTO.setIcon(template.getIcon()); // ✅ SIMPLIFICADO: Icon directamente en el nivel raíz
+                        itemDTO.setGrade(template.getGrade()); // ✅ SIMPLIFICADO: Grade directamente en el nivel raíz
                     } else {
                         logger.warn("Item {} no encontrado en catálogo", item.getItemId());
                     }
@@ -122,21 +131,142 @@ public class OfflineMarketServiceImpl implements OfflineMarketService {
 
             Optional<Character> characterOpt = characterRepository.findByCharId(trade.getCharId());
             String characterName = characterOpt.map(Character::getCharName).orElse("Unknown");
+            
+            // Obtener la ciudad basándose en las coordenadas del personaje
+            String city = "Unknown";
+            if (characterOpt.isPresent()) {
+                Character character = characterOpt.get();
+                Integer x = character.getX();
+                Integer y = character.getY();
+                if (x != null && y != null) {
+                    city = mapRegionTable.getClosestTownName(x, y);
+                }
+            }
 
             OfflineStoreDTO storeDTO = new OfflineStoreDTO();
             storeDTO.setChar_name(characterName);
             storeDTO.setTitle(trade.getTitle());
             storeDTO.setType(trade.getType());
             storeDTO.setTime(trade.getTime());
+            storeDTO.setCity(city);
             storeDTO.setItems(itemsDTO);
 
             result.add(storeDTO);
         }
 
-        logger.debug("🏪 [OFFLINE MARKET] Total de tiendas offline encontradas: {}", result.size());
         return result;
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @param page Número de página (0-based)
+     * @param size Elementos por página
+     * @param filters Mapa con los filtros a aplicar
+     * @return Respuesta paginada con tiendas offline filtradas
+     */
+    @Override
+    public Map<String, Object> getOfflineStoresPaginated(int page, int size, Map<String, String> filters) {
+        // Obtener todas las tiendas
+        List<OfflineStoreDTO> allStores = getAllOfflineStores();
+        
+        // Aplicar filtros
+        List<OfflineStoreDTO> filteredStores = applyFilters(allStores, filters);
+        
+        // Calcular totales
+        int totalElements = filteredStores.size();
+        int totalPages = (int) Math.ceil((double) totalElements / size);
+        
+        // Paginar
+        int startIndex = page * size;
+        int endIndex = Math.min(startIndex + size, filteredStores.size());
+        List<OfflineStoreDTO> pagedStores = filteredStores.subList(startIndex, endIndex);
+        
+        // Construir respuesta
+        Map<String, Object> response = new HashMap<>();
+        response.put("content", pagedStores);
+        response.put("totalElements", totalElements);
+        response.put("totalPages", totalPages);
+        response.put("currentPage", page);
+        response.put("size", size);
+        response.put("hasNext", page < totalPages - 1);
+        response.put("hasPrevious", page > 0);
+        
+        
+        return response;
+    }
+
+    /**
+     * Aplica los filtros a la lista de tiendas.
+     * 
+     * @param stores Lista de tiendas a filtrar
+     * @param filters Mapa con los filtros a aplicar
+     * @return Lista de tiendas filtradas
+     */
+    private List<OfflineStoreDTO> applyFilters(List<OfflineStoreDTO> stores, Map<String, String> filters) {
+        if (filters == null || filters.isEmpty()) {
+            return stores;
+        }
+        
+        List<OfflineStoreDTO> filtered = new ArrayList<>(stores);
+        
+        // Filtro por tipo de tienda (1=Sell, 3=Buy, 8=Pack)
+        String storeTypeStr = filters.get("storeType");
+        if (storeTypeStr != null && !storeTypeStr.trim().isEmpty()) {
+            try {
+                byte storeType = Byte.parseByte(storeTypeStr);
+                filtered = filtered.stream()
+                    .filter(store -> store.getType() == storeType)
+                    .collect(Collectors.toList());
+            } catch (NumberFormatException e) {
+                logger.warn("Valor inválido para storeType: {}", storeTypeStr);
+            }
+        }
+        
+        // Filtro de búsqueda (nombre del personaje, título o nombre de item)
+        String searchTerm = filters.get("searchTerm");
+        if (searchTerm != null && !searchTerm.trim().isEmpty()) {
+            String search = searchTerm.toLowerCase().trim();
+            filtered = filtered.stream()
+                .filter(store -> 
+                    (store.getChar_name() != null && store.getChar_name().toLowerCase().contains(search)) ||
+                    (store.getTitle() != null && store.getTitle().toLowerCase().contains(search)) ||
+                    store.getItems().stream().anyMatch(item -> 
+                        item.getName() != null && item.getName().toLowerCase().contains(search)
+                    )
+                )
+                .collect(Collectors.toList());
+        }
+        
+        // Ordenamiento
+        String sortBy = filters.getOrDefault("sortBy", "time");
+        filtered.sort((a, b) -> {
+            switch (sortBy) {
+                case "time":
+                    return Long.compare(b.getTime(), a.getTime()); // Más reciente primero
+                case "oldest":
+                    return Long.compare(a.getTime(), b.getTime()); // Más viejo primero
+                case "price":
+                    long priceA = a.getItems().stream().mapToLong(item -> item.getPrice()).max().orElse(0);
+                    long priceB = b.getItems().stream().mapToLong(item -> item.getPrice()).max().orElse(0);
+                    return Long.compare(priceB, priceA); // Mayor precio primero
+                case "name":
+                    return a.getChar_name().compareToIgnoreCase(b.getChar_name());
+                case "enchant":
+                    long enchantA = a.getItems().stream()
+                        .mapToLong(item -> item.getEnchantLevel() != null ? item.getEnchantLevel() : 0)
+                        .max().orElse(0);
+                    long enchantB = b.getItems().stream()
+                        .mapToLong(item -> item.getEnchantLevel() != null ? item.getEnchantLevel() : 0)
+                        .max().orElse(0);
+                    return Long.compare(enchantB, enchantA); // Mayor enchant primero
+                default:
+                    return Long.compare(b.getTime(), a.getTime());
+            }
+        });
+        
+        return filtered;
+    }
 
     /**
      * {@inheritDoc}

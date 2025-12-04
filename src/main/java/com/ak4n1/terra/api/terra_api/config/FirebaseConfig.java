@@ -30,7 +30,6 @@ public class FirebaseConfig {
 
             if (FirebaseApp.getApps().isEmpty()) {
                 FirebaseApp.initializeApp(options);
-                logger.info("✅ [FIREBASE] Firebase initialized successfully");
             }
         } catch (IOException e) {
             logger.error("❌ [FIREBASE] Error initializing Firebase: {}", e.getMessage(), e);

@@ -141,9 +141,6 @@ public class PaymentServiceImpl implements PaymentService {
                 paymentTransactionRepository.save(transaction);
             }
             
-            logger.info("Preferencia de pago creada exitosamente. Transacción: {}, Paquete: {}, Cuenta: {}", 
-                       transaction.getId(), coinPackage.getId(), account.getId());
-            
             return preference;
             
         } catch (Exception e) {
@@ -155,14 +152,10 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public boolean processMercadoPagoWebhook(String payload, String signature) {
         try {
-            logger.info("Procesando webhook de Mercado Pago");
-            
             // Procesar webhook con Mercado Pago
             boolean success = mercadoPagoService.processWebhook(payload, signature);
             
-            if (success) {
-                logger.info("Webhook procesado exitosamente");
-            } else {
+            if (!success) {
                 logger.warn("Error al procesar webhook");
             }
             
@@ -243,7 +236,6 @@ public class PaymentServiceImpl implements PaymentService {
                     "Reembolso: " + reason
                 );
                 
-                logger.info("Reembolso procesado exitosamente. Transacción: {}, Razón: {}", transactionId, reason);
                 return true;
             } else {
                 logger.error("Error al procesar reembolso en Mercado Pago. Transacción: {}", transactionId);

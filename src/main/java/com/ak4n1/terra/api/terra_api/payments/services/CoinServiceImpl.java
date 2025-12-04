@@ -73,9 +73,6 @@ public class CoinServiceImpl implements CoinService {
             
             paymentTransactionRepository.save(transaction);
             
-            logger.info("Monedas agregadas exitosamente. Cuenta: {}, Paquete: {}, Monedas: {} (Base: {}, Bonus: {})", 
-                       accountId, packageId, totalCoins, coinPackage.getCoinsAmount(), coinPackage.getBonusCoins());
-            
         } catch (Exception e) {
             logger.error("Error al agregar monedas a la cuenta {}: {}", accountId, e.getMessage(), e);
             throw new RuntimeException("Error al procesar el pago", e);

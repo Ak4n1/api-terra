@@ -7,6 +7,7 @@ import com.ak4n1.terra.api.terra_api.security.filters.JwtAuthenticationFilter;
 import com.ak4n1.terra.api.terra_api.security.filters.RateLimitFilter;
 import com.ak4n1.terra.api.terra_api.security.filters.SecurityHeadersFilter;
 import org.springframework.context.annotation.*;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -108,6 +109,7 @@ public class SecurityConfig {
         var jwtValFilter = new JwtValidationFilter(authManager, activeTokenRepo, userRepo);
 
         http
+                // CORS habilitado nuevamente
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // Deshabilitamos CSRF porque JWT stateless con cookie no usa el token de Spring
                 .csrf(csrf -> csrf.disable())
@@ -143,38 +145,89 @@ public class SecurityConfig {
                                 "/api/payments/webhook/**"
 
 
-
                         ).permitAll()
-                        .requestMatchers(
+                        
+                        // ========================================
+                        // ENDPOINTS USER (Requieren autenticación)
+                        // ========================================
+                        
+                        // USER - GET
+                        .requestMatchers(HttpMethod.GET,
                                 "/api/auth/me",
-                                "/api/game/auth/registerGameAccount",
-                                "/api/game/auth/accounts",
-                                "/api/game/auth/reset-code",
-                                "/api/game/auth/create-code",
-                                "/api/game/auth/changePassword",
+                                "/api/auth/getme",
                                 "/api/auth/recent-activity",
+                                "/api/game/auth/accounts",
                                 "/api/game/characters/by-email",
                                 "/api/game/characters/by-email/paginated",
                                 "/api/game/characters/by-email/stats",
                                 "/api/game/characters/by-email/complete",
-                                "/api/game/clan/by-id",
                                 "/api/game/offline-market",
-                                "/api/game/storage/inventory",
+                                "/api/game/offline-market/paginated",
                                 "/api/payments/packages",
                                 "/api/payments/methods",
-                                "/api/payments/create-preference"
-
-
-
-                        ).authenticated()
+                                "/api/streamer-applications/my-applications",
+                                "/api/withdrawal-permissions",
+                                "/api/news/latest",
+                                "/api/news",
+                                "/api/news/**"
+                        ).hasRole("USER")
+                        
+                        // USER - POST
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/auth/change-password",
+                                "/api/auth/deactivate-code",
+                                "/api/auth/deactivate-verify",
+                                "/api/game/auth/registerGameAccount",
+                                "/api/game/auth/reset-code",
+                                "/api/game/auth/create-code",
+                                "/api/game/auth/changePassword",
+                                "/api/game/clan/by-id",
+                                "/api/game/storage/inventory",
+                                "/api/game/skills/character",
+                                "/api/game/subclasses/character",
+                                "/api/payments/create-preference",
+                                "/api/streamer-applications",
+                                "/api/withdrawal/generate-code",
+                                "/api/withdrawal-permissions/grant",
+                                "/api/withdrawal-permissions/revoke"
+                        ).hasRole("USER")
+                        
+                        // ========================================
+                        // ENDPOINTS ADMIN (Requieren rol ADMIN)
+                        // ========================================
+                        
+                        // ADMIN - GET
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/streamer-applications/admin/approved",
+                                "/api/streamer-applications/admin/pending",
+                                "/api/streamer-applications/admin/rejected"
+                        ).hasRole("ADMIN")
+                        
+                        // ADMIN - POST
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/news",
+                                "/api/news/*/publish",
+                                "/api/news/*/unpublish"
+                        ).hasRole("ADMIN")
+                        
+                        // ADMIN - PUT
+                        .requestMatchers(HttpMethod.PUT,
+                                "/api/news/**"
+                        ).hasRole("ADMIN")
+                        
+                        // ADMIN - DELETE
+                        .requestMatchers(HttpMethod.DELETE,
+                                "/api/news/**"
+                        ).hasRole("ADMIN")
+                        
 
                 )
 
                 // Filtros de seguridad en orden
-                .addFilterBefore(securityHeadersFilter, UsernamePasswordAuthenticationFilter.class) // Security Headers (muy primero)
+                .addFilterBefore(securityHeadersFilter, UsernamePasswordAuthenticationFilter.class) // Security Headers 
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class) // Rate Limiting
-                .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class) // JWT Authentication (login)
-                .addFilterAfter(jwtValFilter, JwtAuthenticationFilter.class); // JWT Validation (después del login)
+                .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class) // JWT Authentication 
+                .addFilterAfter(jwtValFilter, JwtAuthenticationFilter.class); // JWT Validation 
 
         return http.build();
     }
@@ -193,9 +246,9 @@ public class SecurityConfig {
 
         config.setAllowedOrigins(List.of(
                 "file://" ,//Electron
-                "http://localhost:4200",
                 "https://l2terra.online",
-                "http://192.168.100.84:4200"));
+                "http://localhost:4200"
+        ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
 

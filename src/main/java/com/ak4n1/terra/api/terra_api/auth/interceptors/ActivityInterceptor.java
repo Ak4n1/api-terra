@@ -119,7 +119,6 @@ public class ActivityInterceptor implements HandlerInterceptor {
             }
 
             activityRepo.save(activity);
-            logger.info("✅ [ACTIVITY] Actividad registrada: {} - {}", activity.getAction(), email);
         });
     }
 }

@@ -1,3 +1,20 @@
+# Ignore local env files and secrets
+.env
+src/main/resources/.env
+*.p12
+*.jks
+*.keystore
+*.pem
+*.key
+*.crt
+ssl.txt
+service-account-key.json
+logs/
+
+# Ignore Spring properties (manejar fuera del repo)
+src/main/resources/application.properties
+src/main/resources/application-dev.properties
+src/main/resources/application-prod.properties
 HELP.md
 target/
 !.mvn/wrapper/maven-wrapper.jar

@@ -20,10 +20,7 @@ public class PlayerStorageController {
         return playerStorageService.getItemsByPlayerId(request.getPlayerId());
     }
 
-    @GetMapping("/inventory")
-    public List<ItemDTO> getTest() {
-        return playerStorageService.getTest(29520);
-    }
+ 
     
 
 }

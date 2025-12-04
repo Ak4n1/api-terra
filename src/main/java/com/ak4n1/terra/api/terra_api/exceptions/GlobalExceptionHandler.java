@@ -17,16 +17,51 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * Maneja los errores de validación de Bean Validation (@Valid)
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidationErrors(MethodArgumentNotValidException ex) {
+        logger.warn("❌ [VALIDATION ERROR] Errores de validación detectados");
+        
+        Map<String, Object> error = new HashMap<>();
+        error.put("success", false);
+        error.put("error", "VALIDATION_ERROR");
+        
+        // Extraer todos los mensajes de error
+        Map<String, String> fieldErrors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .collect(Collectors.toMap(
+                    FieldError::getField,
+                    FieldError::getDefaultMessage,
+                    (existing, replacement) -> existing + "; " + replacement
+                ));
+        
+        // Construir mensaje combinado
+        String combinedMessage = fieldErrors.values()
+                .stream()
+                .collect(Collectors.joining("; "));
+        
+        error.put("message", combinedMessage);
+        error.put("errors", fieldErrors);
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
 
     /**
      * Maneja la excepción cuando un email ya está registrado

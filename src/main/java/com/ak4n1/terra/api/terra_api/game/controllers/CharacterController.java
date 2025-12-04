@@ -140,14 +140,14 @@ public class CharacterController {
      *
      * @param email - Email del usuario autenticado
      * @param page - Número de página (0-based, default: 0)
-     * @param size - Elementos por página (default: 5)
+     * @param size - Elementos por página (default: 6)
      * @return Respuesta paginada con metadatos
      */
     @GetMapping("/by-email/paginated")
     public ResponseEntity<Map<String, Object>> getCharactersByEmailPaginated(
             @RequestParam String email,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "5") int size) {
+            @RequestParam(defaultValue = "6") int size) {
 
         if (email == null || email.isBlank()) {
             return ResponseEntity.badRequest().build();

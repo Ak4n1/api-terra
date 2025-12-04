@@ -8,6 +8,7 @@ public class OfflineStoreDTO {
     private String title;
     private byte type;
     private long time;
+    private String city; // Ciudad donde está ubicado el personaje (basado en coordenadas)
     private List<OfflineStoreItemDTO> items;
 
     public OfflineStoreDTO(String title, byte type, long time, List<OfflineStoreItemDTO> items) {
@@ -50,5 +51,13 @@ public class OfflineStoreDTO {
 
     public void setType(byte type) {
         this.type = type;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
     }
 }
