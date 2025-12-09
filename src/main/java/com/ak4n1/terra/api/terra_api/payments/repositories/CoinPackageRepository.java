@@ -31,6 +31,11 @@ public interface CoinPackageRepository extends JpaRepository<CoinPackage, Long> 
     List<CoinPackage> findByActiveTrueOrderBySortOrderAsc();
     
     /**
+     * Buscar paquetes activos por moneda ordenados por sort_order
+     */
+    List<CoinPackage> findByActiveTrueAndCurrencyOrderBySortOrderAsc(String currency);
+    
+    /**
      * Buscar paquete por ID y que esté activo
      */
     Optional<CoinPackage> findByIdAndActiveTrue(Long id);

@@ -142,7 +142,8 @@ public class SecurityConfig {
                                 "/api/game/patch-notes",
                                 "/api/stats",
                                 "/api/payments/webhook",
-                                "/api/payments/webhook/**"
+                                "/api/payments/webhook/**",
+                                "/api/webhooks/**"
 
 
                         ).permitAll()
@@ -165,6 +166,12 @@ public class SecurityConfig {
                                 "/api/game/offline-market/paginated",
                                 "/api/payments/packages",
                                 "/api/payments/methods",
+                                "/api/payments/packages/popular",
+                                "/api/payments/packages/*",
+                                "/api/payments/history",
+                                "/api/payments/history/paginated",
+                                "/api/payments/transaction/*/status",
+                                "/api/payments/transaction/*/resume",
                                 "/api/streamer-applications/my-applications",
                                 "/api/withdrawal-permissions",
                                 "/api/news/latest",
@@ -186,6 +193,7 @@ public class SecurityConfig {
                                 "/api/game/skills/character",
                                 "/api/game/subclasses/character",
                                 "/api/payments/create-preference",
+                                "/api/payments/paypal/capture/**",
                                 "/api/streamer-applications",
                                 "/api/withdrawal/generate-code",
                                 "/api/withdrawal-permissions/grant",
@@ -207,7 +215,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/news",
                                 "/api/news/*/publish",
-                                "/api/news/*/unpublish"
+                                "/api/news/*/unpublish",
+                                "/api/payments/admin/**",
+                                "/api/payments/transaction/*/refund",
+                                "/api/game/catalog/items/admin/**"
                         ).hasRole("ADMIN")
                         
                         // ADMIN - PUT

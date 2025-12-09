@@ -16,7 +16,9 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.File;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -50,6 +52,7 @@ public class ItemXmlParser {
      */
     public static Map<Integer, ItemTemplate> parseFile(File xmlFile) {
         Map<Integer, ItemTemplate> items = new HashMap<>();
+        List<String> unknownItems = new ArrayList<>();
         
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -66,7 +69,7 @@ public class ItemXmlParser {
                     Element element = (Element) node;
                     
                     try {
-                        ItemTemplate item = parseItemElement(element);
+                        ItemTemplate item = parseItemElement(element, unknownItems);
                         if (item != null) {
                             items.put(item.getId(), item);
                         }
@@ -76,6 +79,11 @@ public class ItemXmlParser {
                 }
             }
             
+            // Mostrar resumen de items desconocidos si hay
+            if (!unknownItems.isEmpty()) {
+                String ids = String.join(", ", unknownItems);
+                logger.warn("⚠️ [{}] {} items desconocidos: {}", xmlFile.getName(), unknownItems.size(), ids);
+            }
             
         } catch (Exception e) {
             logger.error("Error parseando archivo XML {}: {}", xmlFile.getName(), e.getMessage());
@@ -95,6 +103,7 @@ public class ItemXmlParser {
      */
     public static Map<Integer, ItemTemplate> parseFile(InputStream inputStream, String fileName) {
         Map<Integer, ItemTemplate> items = new HashMap<>();
+        List<String> unknownItems = new ArrayList<>();
         
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -111,7 +120,7 @@ public class ItemXmlParser {
                     Element element = (Element) node;
                     
                     try {
-                        ItemTemplate item = parseItemElement(element);
+                        ItemTemplate item = parseItemElement(element, unknownItems);
                         if (item != null) {
                             items.put(item.getId(), item);
                         }
@@ -121,6 +130,11 @@ public class ItemXmlParser {
                 }
             }
             
+            // Mostrar resumen de items desconocidos si hay
+            if (!unknownItems.isEmpty()) {
+                String ids = String.join(", ", unknownItems);
+                logger.warn("⚠️ [{}] {} items desconocidos: {}", fileName, unknownItems.size(), ids);
+            }
             
         } catch (Exception e) {
             logger.error("Error parseando archivo XML {}: {}", fileName, e.getMessage());
@@ -136,9 +150,10 @@ public class ItemXmlParser {
      * StatSet que se usa para instanciar el tipo correcto de ItemTemplate (Weapon, Armor o EtcItem).
      * 
      * @param itemElement Elemento XML &lt;item&gt; a parsear
+     * @param unknownItems Lista para acumular IDs de items desconocidos
      * @return ItemTemplate parseado según el tipo, o null si el tipo es desconocido
      */
-    private static ItemTemplate parseItemElement(Element itemElement) {
+    private static ItemTemplate parseItemElement(Element itemElement, List<String> unknownItems) {
         StatSet set = new StatSet();
         
         // Atributos principales del item
@@ -203,7 +218,8 @@ public class ItemXmlParser {
             case "EtcItem":
                 return new EtcItem(set);
             default:
-                logger.warn("Tipo de item desconocido: {} para item {}", type, id);
+                // Acumular para mostrar resumen al final
+                unknownItems.add(String.valueOf(id));
                 return null;
         }
     }

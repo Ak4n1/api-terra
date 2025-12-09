@@ -324,14 +324,14 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
         new ObjectMapper().writeValue(res.getOutputStream(), body);
     }
 
+    /**
+     * DEPRECADO: Usar TokenJwtConfig.addCookie() directamente.
+     * Este método se mantiene por compatibilidad pero delega al método centralizado.
+     */
+    @Deprecated
     private static void addCookie(HttpServletResponse res, String name, String value, int maxAgeSeconds) {
-        String cookie = name + "=" + value
-                + "; Path=/"
-                + "; HttpOnly"
-                + "; Secure"
-                + "; SameSite=None"
-                + "; Max-Age=" + maxAgeSeconds;
-        res.addHeader("Set-Cookie", cookie);
+        // Delegamos al método centralizado que usa la configuración correcta
+        TokenJwtConfig.addCookie(res, name, value, maxAgeSeconds);
     }
 
     /**

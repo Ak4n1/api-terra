@@ -65,7 +65,8 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
             "/api/game/patch-notes",
             "/api/stats",
             "/api/payments/webhook",
-            "/api/payments/webhook/**"
+            "/api/payments/webhook/**",
+            "/api/webhooks"
 
 
     );

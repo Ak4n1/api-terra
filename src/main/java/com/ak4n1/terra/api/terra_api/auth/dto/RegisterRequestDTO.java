@@ -13,12 +13,12 @@ import jakarta.validation.constraints.Size;
  */
 public class RegisterRequestDTO {
 
-    @NotBlank(message = "El correo es obligatorio")
-    @Email(message = "Debe ser un correo válido")
+    @NotBlank(message = "Email is required")
+    @Email(message = "Must be a valid email address")
     private String email;
 
-    @NotBlank(message = "La contraseña es obligatoria")
-    @Size(min = 6, message = "La contraseña debe tener al menos 6 caracteres")
+    @NotBlank(message = "Password is required")
+    @Size(min = 8, max = 128, message = "Password must be between 8 and 128 characters")
     private String password;
 
     // Constructor

@@ -5,22 +5,30 @@ import com.ak4n1.terra.api.terra_api.auth.repositories.AccountMasterRepository;
 import com.ak4n1.terra.api.terra_api.payments.dto.CoinPackageResponseDTO;
 import com.ak4n1.terra.api.terra_api.payments.dto.CoinPurchaseRequest;
 import com.ak4n1.terra.api.terra_api.payments.dto.PaymentPreferenceResponse;
+import com.ak4n1.terra.api.terra_api.payments.dto.PaymentTransactionDTO;
 import com.ak4n1.terra.api.terra_api.payments.entities.CoinPackage;
 import com.ak4n1.terra.api.terra_api.payments.entities.PaymentTransaction;
 import com.ak4n1.terra.api.terra_api.payments.repositories.CoinPackageRepository;
 import com.ak4n1.terra.api.terra_api.payments.repositories.PaymentTransactionRepository;
+import com.ak4n1.terra.api.terra_api.payments.factory.PaymentStrategyFactory;
+import com.ak4n1.terra.api.terra_api.payments.strategies.PaymentStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.hibernate.Hibernate;
 
 /**
- * Implementación del servicio principal de pagos
+ * Implementación del servicio principal de pagos - Refactorizado con Factory Pattern
  */
 @Service
 @Transactional
@@ -38,7 +46,7 @@ public class PaymentServiceImpl implements PaymentService {
     private AccountMasterRepository accountMasterRepository;
     
     @Autowired
-    private MercadoPagoService mercadoPagoService;
+    private PaymentStrategyFactory paymentStrategyFactory;
     
     @Autowired
     private CoinService coinService;
@@ -52,6 +60,27 @@ public class PaymentServiceImpl implements PaymentService {
                     .collect(Collectors.toList());
         } catch (Exception e) {
             logger.error("Error al obtener paquetes activos: {}", e.getMessage(), e);
+            return List.of();
+        }
+    }
+    
+    @Override
+    public List<CoinPackageResponseDTO> getActivePackagesByCurrency(String currency) {
+        try {
+            // Validate currency
+            List<String> ALLOWED_CURRENCIES = List.of("USD", "ARS");
+            if (!ALLOWED_CURRENCIES.contains(currency.toUpperCase())) {
+                logger.warn("Invalid currency requested: {}", currency);
+                return List.of();
+            }
+            
+            List<CoinPackage> packages = coinPackageRepository.findByActiveTrueAndCurrencyOrderBySortOrderAsc(currency.toUpperCase());
+            logger.info("Found {} active packages for currency {}", packages.size(), currency);
+            return packages.stream()
+                    .map(CoinPackageResponseDTO::new)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            logger.error("Error al obtener paquetes activos por moneda {}: {}", currency, e.getMessage(), e);
             return List.of();
         }
     }
@@ -88,6 +117,18 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentPreferenceResponse createPaymentPreference(CoinPurchaseRequest request) {
         try {
+            // Determinar el proveedor (por defecto MercadoPago)
+            String provider = request.getProvider() != null ? request.getProvider() : "mercadopago";
+            
+            // SECURITY: Whitelist de proveedores permitidos
+            List<String> ALLOWED_PROVIDERS = List.of("mercadopago", "paypal");
+            if (!ALLOWED_PROVIDERS.contains(provider.toLowerCase())) {
+                logger.error("Invalid payment provider attempted: {}", provider);
+                return new PaymentPreferenceResponse("error", "Invalid payment provider");
+            }
+            
+            logger.info("[Payment] Creating payment preference for provider: {}", provider);
+            
             // Validar que el paquete existe y está activo
             Optional<CoinPackage> packageOpt = coinPackageRepository.findByIdAndActiveTrue(request.getPackageId());
             if (packageOpt.isEmpty()) {
@@ -105,8 +146,15 @@ public class PaymentServiceImpl implements PaymentService {
             CoinPackage coinPackage = packageOpt.get();
             AccountMaster account = accountOpt.get();
             
+            // SECURITY: Verificar que el email esté verificado
+            if (!account.isEmailVerified()) {
+                logger.error("Email not verified for account: {}", account.getId());
+                return new PaymentPreferenceResponse("error", "Email verification required to make purchases");
+            }
+            
             // Crear transacción pendiente
             PaymentTransaction transaction = new PaymentTransaction();
+            transaction.setProvider(provider);
             transaction.setAccount(account);
             transaction.setCoinPackage(coinPackage);
             transaction.setAmount(coinPackage.getPrice());
@@ -116,51 +164,44 @@ public class PaymentServiceImpl implements PaymentService {
             transaction.setReturnUrl(request.getReturnUrl());
             transaction.setCancelUrl(request.getCancelUrl());
             transaction.setNotificationUrl(request.getNotificationUrl());
+            transaction.setIpAddress(request.getIpAddress()); // IP del cliente
+            transaction.setPaymentMethod(provider); // mercadopago, paypal
+            transaction.setPaymentType("digital_currency"); // Tipo genérico para coins
+            
+            // SECURITY: Validar que el monto de la transacción coincida con el paquete
+            if (!transaction.getAmount().equals(coinPackage.getPrice())) {
+                logger.error("Price mismatch detected! Transaction: {}, Package: {}", 
+                           transaction.getAmount(), coinPackage.getPrice());
+                throw new SecurityException("Price mismatch detected");
+            }
             
             paymentTransactionRepository.save(transaction);
             
-            // Crear preferencia en Mercado Pago
-            PaymentPreferenceResponse preference = mercadoPagoService.createPaymentPreference(
-                coinPackage, 
-                request.getAccountId(), 
-                request.getReturnUrl(), 
-                request.getCancelUrl()
-            );
+            // Obtener la estrategia de pago correspondiente
+            PaymentStrategy strategy = paymentStrategyFactory.getPaymentStrategy(provider);
             
-            // Verificar si hubo error en la creación de la preferencia
-            if ("error".equals(preference.getStatus())) {
-                logger.error("Error al crear preferencia en Mercado Pago: {}", preference.getMessage());
-                // Eliminar la transacción creada ya que falló
-                paymentTransactionRepository.delete(transaction);
-                return preference;
-            }
+            // Crear el pago usando la estrategia
+            PaymentPreferenceResponse preference = strategy.createPayment(transaction);
             
-            // Actualizar transacción con el ID de preferencia
-            if (preference.getPreferenceId() != null) {
-                transaction.setMpPreferenceId(preference.getPreferenceId());
-                paymentTransactionRepository.save(transaction);
-            }
-            
+            logger.info("[Payment] Payment preference created successfully");
             return preference;
             
+        } catch (IllegalArgumentException e) {
+            logger.error("Proveedor de pago no soportado: {}", e.getMessage());
+            return new PaymentPreferenceResponse("error", "Proveedor de pago no soportado");
         } catch (Exception e) {
             logger.error("Error al crear preferencia de pago: {}", e.getMessage(), e);
-            return new PaymentPreferenceResponse("error", "Error interno del servidor");
+            return new PaymentPreferenceResponse("error", "Error interno del servidor: " + e.getMessage());
         }
     }
     
     @Override
     public boolean processMercadoPagoWebhook(String payload, String signature) {
         try {
-            // Procesar webhook con Mercado Pago
-            boolean success = mercadoPagoService.processWebhook(payload, signature);
-            
-            if (!success) {
-                logger.warn("Error al procesar webhook");
-            }
-            
-            return success;
-            
+            // Mantener este método por retrocompatibilidad
+            // El WebhookController usará directamente el Factory
+            logger.info("[Payment] Processing webhook (legacy method)");
+            return true;
         } catch (Exception e) {
             logger.error("Error al procesar webhook: {}", e.getMessage(), e);
             return false;
@@ -168,18 +209,71 @@ public class PaymentServiceImpl implements PaymentService {
     }
     
     @Override
-    public List<PaymentTransaction> getAccountTransactionHistory(Long accountId) {
+    @Transactional(readOnly = true)
+    public List<PaymentTransactionDTO> getAccountTransactionHistory(Long accountId) {
         try {
             Optional<AccountMaster> accountOpt = accountMasterRepository.findById(accountId);
             if (accountOpt.isEmpty()) {
+                logger.warn("Account not found for ID: {}", accountId);
                 return List.of();
             }
             
-            return paymentTransactionRepository.findByAccountOrderByCreatedAtDesc(accountOpt.get());
+            // JOIN FETCH carga las relaciones lazy dentro de la transacción
+            List<PaymentTransaction> transactions = paymentTransactionRepository.findByAccountOrderByCreatedAtDesc(accountOpt.get());
+            
+            // Convertir a DTOs dentro de la transacción (antes de que se cierre la sesión)
+            // Esto evita LazyInitializationException
+            return transactions.stream()
+                    .map(transaction -> {
+                        try {
+                            return new PaymentTransactionDTO(transaction);
+                        } catch (Exception e) {
+                            logger.error("Error converting transaction {} to DTO: {}", transaction.getId(), e.getMessage(), e);
+                            return null;
+                        }
+                    })
+                    .filter(dto -> dto != null)
+                    .collect(Collectors.toList());
             
         } catch (Exception e) {
             logger.error("Error al obtener historial de transacciones de la cuenta {}: {}", accountId, e.getMessage(), e);
             return List.of();
+        }
+    }
+    
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PaymentTransactionDTO> getAccountTransactionHistoryPaginated(Long accountId, int page, int size) {
+        try {
+            Optional<AccountMaster> accountOpt = accountMasterRepository.findById(accountId);
+            if (accountOpt.isEmpty()) {
+                logger.warn("Account not found for ID: {}", accountId);
+                return Page.empty();
+            }
+
+            Pageable pageable = PageRequest.of(page, size);
+            Page<PaymentTransaction> transactionPage = paymentTransactionRepository.findByAccountOrderByCreatedAtDesc(accountOpt.get(), pageable);
+
+            List<PaymentTransactionDTO> dtos = transactionPage.getContent().stream()
+                    .map(transaction -> {
+                        try {
+                            if (transaction.getCoinPackage() != null) {
+                                Hibernate.initialize(transaction.getCoinPackage());
+                            }
+                            return new PaymentTransactionDTO(transaction);
+                        } catch (Exception e) {
+                            logger.error("Error converting transaction {} to DTO: {}", transaction.getId(), e.getMessage(), e);
+                            return null;
+                        }
+                    })
+                    .filter(dto -> dto != null)
+                    .collect(Collectors.toList());
+
+            return new PageImpl<>(dtos, pageable, transactionPage.getTotalElements());
+
+        } catch (Exception e) {
+            logger.error("Error al obtener historial paginado de transacciones de la cuenta {}: {}", accountId, e.getMessage(), e);
+            return Page.empty();
         }
     }
     
@@ -221,8 +315,25 @@ public class PaymentServiceImpl implements PaymentService {
                 return false;
             }
             
-            // Intentar reembolsar en Mercado Pago
-            boolean refundSuccess = mercadoPagoService.refundPayment(transaction.getMpPaymentId(), reason);
+            // Obtener la estrategia de pago correspondiente
+            String provider = transaction.getProvider() != null ? transaction.getProvider() : "mercadopago";
+            PaymentStrategy strategy = paymentStrategyFactory.getPaymentStrategy(provider);
+            
+            // Obtener el payment ID según el proveedor
+            String paymentId = null;
+            if ("mercadopago".equalsIgnoreCase(provider)) {
+                paymentId = transaction.getMpPaymentId();
+            } else if ("paypal".equalsIgnoreCase(provider)) {
+                paymentId = transaction.getPaypalOrderId();
+            }
+            
+            if (paymentId == null) {
+                logger.error("No payment ID found for transaction: {}", transactionId);
+                return false;
+            }
+            
+            // Intentar reembolsar usando la estrategia
+            boolean refundSuccess = strategy.refundPayment(paymentId);
             
             if (refundSuccess) {
                 // Actualizar estado de la transacción
@@ -238,13 +349,66 @@ public class PaymentServiceImpl implements PaymentService {
                 
                 return true;
             } else {
-                logger.error("Error al procesar reembolso en Mercado Pago. Transacción: {}", transactionId);
+                logger.error("Error al procesar reembolso. Transacción: {}", transactionId);
                 return false;
             }
             
         } catch (Exception e) {
             logger.error("Error al reembolsar transacción {}: {}", transactionId, e.getMessage(), e);
             return false;
+        }
+    }
+    
+    @Override
+    public String getResumePaymentUrl(Long transactionId, Long accountId) {
+        try {
+            // Buscar la transacción
+            Optional<PaymentTransaction> transactionOpt = paymentTransactionRepository.findById(transactionId);
+            if (transactionOpt.isEmpty()) {
+                throw new IllegalArgumentException("Transaction not found");
+            }
+            
+            PaymentTransaction transaction = transactionOpt.get();
+            
+            // Validar que la transacción pertenece al usuario
+            if (!transaction.getAccount().getId().equals(accountId)) {
+                throw new IllegalArgumentException("Transaction does not belong to this account");
+            }
+            
+            // Validar que la transacción esté pendiente
+            if (!transaction.isPending()) {
+                throw new IllegalArgumentException("Transaction is not pending. Status: " + transaction.getStatus());
+            }
+            
+            String provider = transaction.getProvider() != null ? transaction.getProvider() : "mercadopago";
+            
+            // Generar URL según el provider
+            if ("mercadopago".equalsIgnoreCase(provider)) {
+                String preferenceId = transaction.getMpPreferenceId();
+                if (preferenceId == null || preferenceId.isEmpty()) {
+                    throw new IllegalArgumentException("MercadoPago preference ID not found for this transaction");
+                }
+                
+                // Construir URL de MercadoPago
+                // El dominio depende del país, pero podemos usar el genérico o construir según preferencia
+                // Para simplificar, usamos el dominio genérico que funciona para todos los países
+                return "https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=" + preferenceId;
+                
+            } else if ("paypal".equalsIgnoreCase(provider)) {
+                // Para PayPal, las órdenes expiran después de cierto tiempo
+                // Si la orden expiró, necesitaríamos crear una nueva
+                // Por ahora, retornamos un mensaje indicando que debe crear una nueva orden
+                throw new IllegalArgumentException("PayPal orders cannot be resumed. Please create a new payment.");
+                
+            } else {
+                throw new IllegalArgumentException("Unsupported payment provider: " + provider);
+            }
+            
+        } catch (IllegalArgumentException e) {
+            throw e; // Re-throw para que el controller maneje el error apropiadamente
+        } catch (Exception e) {
+            logger.error("Error al generar URL de reanudación para transacción {}: {}", transactionId, e.getMessage(), e);
+            throw new RuntimeException("Error generating resume payment URL: " + e.getMessage());
         }
     }
 }

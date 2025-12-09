@@ -125,13 +125,30 @@
 			<version>1.19.0</version> <!-- o la más reciente -->
 		</dependency>
 
-		<!-- Mercado Pago SDK -->
-		<dependency>
-			<groupId>com.mercadopago</groupId>
-			<artifactId>sdk-java</artifactId>
-			<version>2.5.0</version>
-		</dependency>
-	</dependencies>
+	<!-- Mercado Pago SDK -->
+	<dependency>
+		<groupId>com.mercadopago</groupId>
+		<artifactId>sdk-java</artifactId>
+		<version>2.5.0</version>
+	</dependency>
+
+	<!-- PayPal SDK -->
+	<dependency>
+		<groupId>com.paypal.sdk</groupId>
+		<artifactId>checkout-sdk</artifactId>
+		<version>2.0.0</version>
+	</dependency>
+
+	<!-- Flyway para migraciones automáticas de BD -->
+	<dependency>
+		<groupId>org.flywaydb</groupId>
+		<artifactId>flyway-core</artifactId>
+	</dependency>
+	<dependency>
+		<groupId>org.flywaydb</groupId>
+		<artifactId>flyway-mysql</artifactId>
+	</dependency>
+</dependencies>
 
     <build>
         <plugins>

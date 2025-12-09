@@ -1,6 +1,7 @@
 package com.ak4n1.terra.api.terra_api.news.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -23,7 +24,8 @@ public class CreateNewsRequest {
     private String imageUrl;
 
     @NotBlank(message = "Language is required")
-    @Size(min = 2, max = 2, message = "Language must be 2 characters (en, es)")
+    @Size(min = 2, max = 2, message = "Language must be 2 characters")
+    @Pattern(regexp = "^(en|es)$", message = "Language must be 'en' or 'es'")
     private String language = "en";
 
     private String authorName = "Terra Team";

@@ -6,6 +6,8 @@ import com.ak4n1.terra.api.terra_api.game.dto.AccountGameResponseDTO;
 import com.ak4n1.terra.api.terra_api.game.dto.ChangePasswordGameDTO;
 import com.ak4n1.terra.api.terra_api.game.entities.AccountGame;
 import com.ak4n1.terra.api.terra_api.game.services.GameAccountService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,7 +32,7 @@ public class GameAccountController {
     private GameAccountService accountService;
 
     @PostMapping("/registerGameAccount")
-    public ResponseEntity<Map<String, Object>> registerGameAccount(@RequestBody AccountGameRequestDTO dto) {
+    public ResponseEntity<Map<String, Object>> registerGameAccount(@Valid @RequestBody AccountGameRequestDTO dto) {
         Map<String, Object> response = new HashMap<>();
 
         String email = getEmailFromToken();

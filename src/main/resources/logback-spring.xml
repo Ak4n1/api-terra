@@ -79,12 +79,26 @@
     <!-- Configuración para producción -->
     <springProfile name="prod">
         <root level="INFO">
+            <!-- Solo FILE en producción (sin console para mejor rendimiento) -->
             <appender-ref ref="FILE"/>
         </root>
         
         <!-- Reducir logs de Hibernate en producción -->
-        <logger name="org.hibernate.SQL" level="WARN"/>
-        <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="WARN"/>
+        <logger name="org.hibernate.SQL" level="ERROR"/>
+        <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="ERROR"/>
+        <logger name="org.hibernate" level="WARN"/>
+        
+        <!-- HikariCP: solo errores críticos -->
+        <logger name="com.zaxxer.hikari" level="ERROR"/>
+        <logger name="com.zaxxer.hikari.pool" level="ERROR"/>
+        
+        <!-- Spring Framework: reducir ruido -->
+        <logger name="org.springframework.web" level="WARN"/>
+        <logger name="org.springframework.security.web.FilterChainProxy" level="WARN"/>
+        
+        <!-- Áreas de alto volumen: solo WARN -->
+        <logger name="com.ak4n1.terra.api.terra_api.game" level="WARN"/>
+        <logger name="com.ak4n1.terra.api.terra_api.news" level="WARN"/>
     </springProfile>
     
     <!-- Logger para interceptores -->

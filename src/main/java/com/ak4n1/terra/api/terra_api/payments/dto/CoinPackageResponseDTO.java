@@ -17,6 +17,7 @@ public class CoinPackageResponseDTO {
     private BigDecimal originalPrice;
     private Integer bonusPercentage;
     private String description;
+    private String currency;
     private boolean popular;
     private boolean active;
     private BigDecimal discountAmount;
@@ -36,6 +37,7 @@ public class CoinPackageResponseDTO {
         this.originalPrice = coinPackage.getOriginalPrice();
         this.bonusPercentage = coinPackage.getBonusPercentage();
         this.description = coinPackage.getDescription();
+        this.currency = coinPackage.getCurrency();
         this.popular = coinPackage.isPopular();
         this.active = coinPackage.isActive();
         this.discountAmount = coinPackage.getDiscountAmount();
@@ -113,6 +115,14 @@ public class CoinPackageResponseDTO {
     
     public void setDescription(String description) {
         this.description = description;
+    }
+    
+    public String getCurrency() {
+        return currency;
+    }
+    
+    public void setCurrency(String currency) {
+        this.currency = currency;
     }
     
     public boolean isPopular() {

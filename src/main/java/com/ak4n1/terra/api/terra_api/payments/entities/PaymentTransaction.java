@@ -2,8 +2,11 @@ package com.ak4n1.terra.api.terra_api.payments.entities;
 
 import com.ak4n1.terra.api.terra_api.auth.entities.AccountMaster;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.UUID;
 
 /**
  * Entidad para registrar transacciones de pago
@@ -16,13 +19,21 @@ public class PaymentTransaction {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
+    @Column(name = "external_uuid", unique = true, nullable = false, length = 36)
+    private String externalUuid; // UUID público para referencias externas (no expone ID secuencial)
+    
+    @NotNull(message = "Account is required")
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id", nullable = false)
     private AccountMaster account;
     
+    @NotNull(message = "Package is required")
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "package_id", nullable = false)
     private CoinPackage coinPackage;
+    
+    @Column(name = "provider", length = 20)
+    private String provider; // "mercadopago", "paypal", "stripe", etc.
     
     @Column(name = "mp_payment_id", unique = true)
     private String mpPaymentId; // ID de Mercado Pago
@@ -30,15 +41,25 @@ public class PaymentTransaction {
     @Column(name = "mp_preference_id")
     private String mpPreferenceId; // ID de preferencia de MP
     
+    @Column(name = "paypal_order_id", unique = true)
+    private String paypalOrderId; // ID de orden de PayPal
+    
+    @NotNull(message = "Amount is required")
     @Column(name = "amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal amount; // Monto pagado
     
+    @NotNull(message = "Coins amount is required")
+    @Min(value = 1, message = "Coins amount must be positive")
     @Column(name = "coins_amount", nullable = false)
     private Integer coinsAmount; // Total de monedas (base + bonus)
     
+    @NotNull(message = "Base coins is required")
+    @Min(value = 0, message = "Base coins must be non-negative")
     @Column(name = "base_coins", nullable = false)
     private Integer baseCoins; // Monedas base del paquete
     
+    @NotNull(message = "Bonus coins is required")
+    @Min(value = 0, message = "Bonus coins must be non-negative")
     @Column(name = "bonus_coins", nullable = false)
     private Integer bonusCoins; // Monedas bonus
     
@@ -52,20 +73,11 @@ public class PaymentTransaction {
     @Column(name = "payment_type")
     private String paymentType; // "credit_card", "debit_card", "bank_transfer", etc.
     
-    @Column(name = "installments")
-    private Integer installments; // Cuotas
-    
-    @Column(name = "installment_amount")
-    private BigDecimal installmentAmount; // Monto por cuota
-    
     @Column(name = "mp_status")
     private String mpStatus; // Estado de Mercado Pago
     
     @Column(name = "mp_status_detail")
     private String mpStatusDetail; // Detalle del estado de MP
-    
-    @Column(name = "external_reference")
-    private String externalReference; // Referencia externa
     
     @Column(name = "notification_url")
     private String notificationUrl; // URL de notificación
@@ -97,6 +109,7 @@ public class PaymentTransaction {
     // Constructor
     public PaymentTransaction() {
         this.createdAt = new Date();
+        this.externalUuid = UUID.randomUUID().toString(); // Generar UUID automáticamente
     }
     
     // Getters y Setters
@@ -106,6 +119,14 @@ public class PaymentTransaction {
     
     public void setId(Long id) {
         this.id = id;
+    }
+    
+    public String getExternalUuid() {
+        return externalUuid;
+    }
+    
+    public void setExternalUuid(String externalUuid) {
+        this.externalUuid = externalUuid;
     }
     
     public AccountMaster getAccount() {
@@ -138,6 +159,22 @@ public class PaymentTransaction {
     
     public void setMpPreferenceId(String mpPreferenceId) {
         this.mpPreferenceId = mpPreferenceId;
+    }
+    
+    public String getProvider() {
+        return provider;
+    }
+    
+    public void setProvider(String provider) {
+        this.provider = provider;
+    }
+    
+    public String getPaypalOrderId() {
+        return paypalOrderId;
+    }
+    
+    public void setPaypalOrderId(String paypalOrderId) {
+        this.paypalOrderId = paypalOrderId;
     }
     
     public BigDecimal getAmount() {
@@ -196,22 +233,6 @@ public class PaymentTransaction {
         this.paymentType = paymentType;
     }
     
-    public Integer getInstallments() {
-        return installments;
-    }
-    
-    public void setInstallments(Integer installments) {
-        this.installments = installments;
-    }
-    
-    public BigDecimal getInstallmentAmount() {
-        return installmentAmount;
-    }
-    
-    public void setInstallmentAmount(BigDecimal installmentAmount) {
-        this.installmentAmount = installmentAmount;
-    }
-    
     public String getMpStatus() {
         return mpStatus;
     }
@@ -226,14 +247,6 @@ public class PaymentTransaction {
     
     public void setMpStatusDetail(String mpStatusDetail) {
         this.mpStatusDetail = mpStatusDetail;
-    }
-    
-    public String getExternalReference() {
-        return externalReference;
-    }
-    
-    public void setExternalReference(String externalReference) {
-        this.externalReference = externalReference;
     }
     
     public String getNotificationUrl() {

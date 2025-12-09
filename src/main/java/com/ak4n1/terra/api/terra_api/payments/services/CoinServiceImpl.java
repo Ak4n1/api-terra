@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -32,6 +33,9 @@ public class CoinServiceImpl implements CoinService {
     
     @Autowired
     private PaymentTransactionRepository paymentTransactionRepository;
+    
+    @Autowired
+    private PaymentAuditService auditService;
     
     @Override
     public void addCoinsToAccount(Long accountId, Long packageId, PaymentTransaction transaction) {
@@ -80,53 +84,64 @@ public class CoinServiceImpl implements CoinService {
     }
     
     @Override
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     public void addCoinsToAccount(Long accountId, Integer coinsAmount, String reason) {
-        try {
-            Optional<AccountMaster> accountOpt = accountMasterRepository.findById(accountId);
-            if (accountOpt.isEmpty()) {
-                throw new RuntimeException("Cuenta no encontrada");
-            }
-            
-            AccountMaster account = accountOpt.get();
-            int currentCoins = account.getTerraCoins() != null ? account.getTerraCoins() : 0;
-            account.setTerraCoins(currentCoins + coinsAmount);
-            
-            accountMasterRepository.save(account);
-            
-            logger.info("Monedas agregadas manualmente. Cuenta: {}, Cantidad: {}, Razón: {}", 
-                       accountId, coinsAmount, reason);
-            
-        } catch (Exception e) {
-            logger.error("Error al agregar monedas manualmente a la cuenta {}: {}", accountId, e.getMessage(), e);
-            throw new RuntimeException("Error al agregar monedas", e);
+        Optional<AccountMaster> accountOpt = accountMasterRepository.findById(accountId);
+        if (accountOpt.isEmpty()) {
+            throw new RuntimeException("Account not found: " + accountId);
         }
+        
+        if (coinsAmount == null || coinsAmount <= 0) {
+            throw new IllegalArgumentException("Invalid coins amount: " + coinsAmount);
+        }
+        
+        AccountMaster account = accountOpt.get();
+        int currentCoins = account.getTerraCoins() != null ? account.getTerraCoins() : 0;
+        int newCoins = currentCoins + coinsAmount;
+        account.setTerraCoins(newCoins);
+        
+        accountMasterRepository.save(account);
+        accountMasterRepository.flush(); // Force immediate write
+        
+        // Registrar en auditoría (si falla, rollback automático)
+        auditService.auditAdminAdjustment(account, currentCoins, newCoins, reason, "SYSTEM", null);
+        
+        logger.info("Monedas agregadas manualmente. Cuenta: {}, Cantidad: {}, Razón: {}", 
+                   accountId, coinsAmount, reason);
     }
     
     @Override
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     public void removeCoinsFromAccount(Long accountId, Integer coinsAmount, String reason) {
-        try {
-            Optional<AccountMaster> accountOpt = accountMasterRepository.findById(accountId);
-            if (accountOpt.isEmpty()) {
-                throw new RuntimeException("Cuenta no encontrada");
-            }
-            
-            AccountMaster account = accountOpt.get();
-            int currentCoins = account.getTerraCoins() != null ? account.getTerraCoins() : 0;
-            
-            if (currentCoins < coinsAmount) {
-                throw new RuntimeException("Saldo insuficiente");
-            }
-            
-            account.setTerraCoins(currentCoins - coinsAmount);
-            accountMasterRepository.save(account);
-            
-            logger.info("Monedas removidas. Cuenta: {}, Cantidad: {}, Razón: {}", 
-                       accountId, coinsAmount, reason);
-            
-        } catch (Exception e) {
-            logger.error("Error al remover monedas de la cuenta {}: {}", accountId, e.getMessage(), e);
-            throw new RuntimeException("Error al remover monedas", e);
+        Optional<AccountMaster> accountOpt = accountMasterRepository.findById(accountId);
+        if (accountOpt.isEmpty()) {
+            throw new RuntimeException("Account not found: " + accountId);
         }
+        
+        if (coinsAmount == null || coinsAmount <= 0) {
+            throw new IllegalArgumentException("Invalid coins amount: " + coinsAmount);
+        }
+        
+        AccountMaster account = accountOpt.get();
+        int currentCoins = account.getTerraCoins() != null ? account.getTerraCoins() : 0;
+        
+        // CRITICAL: Verificar saldo ANTES de restar
+        if (currentCoins < coinsAmount) {
+            throw new IllegalStateException(
+                String.format("Insufficient balance. Current: %d, Required: %d", currentCoins, coinsAmount)
+            );
+        }
+        
+        int newCoins = currentCoins - coinsAmount;
+        account.setTerraCoins(newCoins);
+        accountMasterRepository.save(account);
+        accountMasterRepository.flush(); // Force immediate write
+        
+        // Registrar en auditoría (si falla, rollback automático)
+        auditService.auditAdminAdjustment(account, currentCoins, newCoins, reason, "SYSTEM", null);
+        
+        logger.info("Monedas removidas. Cuenta: {}, Cantidad: {}, Razón: {}", 
+                   accountId, coinsAmount, reason);
     }
     
     @Override

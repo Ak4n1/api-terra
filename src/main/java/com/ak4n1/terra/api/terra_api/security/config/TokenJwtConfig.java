@@ -36,6 +36,16 @@ public class TokenJwtConfig {
      */
     public static boolean USE_SECURE_COOKIES = false;
     
+    /**
+     * SameSite policy para cookies JWT.
+     * Configuración recomendada para arquitecturas con reverse proxy (Nginx/Cloudflare):
+     * - Lax: Permite cookies en navegación normal same-site (recomendado)
+     * - None: Solo necesario si frontend y backend están en dominios diferentes SIN proxy
+     * 
+     * Puedes cambiarlo con la propiedad: jwt.cookie.samesite=Lax|None|Strict
+     */
+    public static String COOKIE_SAMESITE = "Lax";
+    
     public TokenJwtConfig(Environment environment) {
         this.environment = environment;
     }
@@ -60,6 +70,11 @@ public class TokenJwtConfig {
         boolean isProd = environment.matchesProfiles("prod");
         boolean sslEnabled = environment.getProperty("server.ssl.enabled", Boolean.class, false);
         USE_SECURE_COOKIES = isProd || sslEnabled;
+        
+        // Configurar SameSite desde properties (default: Lax)
+        // Lax = Recomendado para same-origin con reverse proxy
+        // None = Solo si frontend/backend en dominios diferentes sin proxy
+        COOKIE_SAMESITE = environment.getProperty("jwt.cookie.samesite", "Lax");
     }
 
     /**
@@ -81,16 +96,19 @@ public class TokenJwtConfig {
 
     /**
      * Helper centralizado para setear cookies según entorno.
-     * - Si USE_SECURE_COOKIES=true (HTTPS/prod): SameSite=None; Secure
-     * - Si es dev HTTP/same-origin: SameSite=Lax; sin Secure
+     * - En producción: SameSite={configurado}; Secure
+     * - En dev: SameSite={configurado}; sin Secure
+     * 
+     * Configuración recomendada:
+     * - Lax (default): Seguro para same-origin con proxy inverso (Nginx/Cloudflare)
+     * - None: Solo si frontend/backend en dominios diferentes SIN proxy
      */
     public static void addCookie(HttpServletResponse response, String name, String value, int maxAgeSeconds) {
-        String sameSite = USE_SECURE_COOKIES ? "None" : "Lax";
         String cookie = name + "=" + value
                 + "; Path=/"
                 + "; HttpOnly"
                 + (USE_SECURE_COOKIES ? "; Secure" : "")
-                + "; SameSite=" + sameSite
+                + "; SameSite=" + COOKIE_SAMESITE
                 + "; Max-Age=" + maxAgeSeconds;
         response.addHeader("Set-Cookie", cookie);
     }

@@ -35,6 +35,9 @@ public class CoinPackage {
     @Column(name = "description", length = 255)
     private String description; // "300 Terra Coins + 30 Bonus"
     
+    @Column(name = "currency", nullable = false, length = 3)
+    private String currency = "ARS"; // "ARS", "USD"
+    
     @Column(name = "popular", nullable = false)
     private boolean popular = false; // Badge "Más Popular"
     
@@ -147,6 +150,14 @@ public class CoinPackage {
     
     public void setDescription(String description) {
         this.description = description;
+    }
+    
+    public String getCurrency() {
+        return currency;
+    }
+    
+    public void setCurrency(String currency) {
+        this.currency = currency;
     }
     
     public boolean isPopular() {

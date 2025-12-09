@@ -31,6 +31,11 @@ public class NewsServiceImpl implements NewsService {
 
     @Override
     public List<NewsListDTO> getLatestNews(int limit, String language, String userEmail) {
+        // Validar language - solo permitir "en" o "es"
+        if (!language.equals("en") && !language.equals("es")) {
+            language = "en"; // Default si no es válido
+        }
+        
         Pageable pageable = PageRequest.of(0, limit);
         Page<News> newsPage = newsRepository.findPublishedNewsByLanguage(language, "newest", pageable);
         
@@ -43,9 +48,19 @@ public class NewsServiceImpl implements NewsService {
     public NewsPageResponse getNewsList(int page, int pageSize, String language, String sortBy, String userEmail) {
         Pageable pageable = PageRequest.of(page - 1, pageSize);
         
-        // Validar sortBy
+        // Validar language - solo permitir "en" o "es"
+        if (!language.equals("en") && !language.equals("es")) {
+            language = "en"; // Default si no es válido
+        }
+        
+        // Validar sortBy - solo permitir valores específicos para prevenir inyección
         if (sortBy == null || sortBy.isEmpty()) {
             sortBy = "newest";
+        } else {
+            // Whitelist de valores permitidos
+            if (!sortBy.equals("newest") && !sortBy.equals("oldest")) {
+                sortBy = "newest"; // Valor por defecto si no es válido
+            }
         }
         
         Page<News> newsPage = newsRepository.findPublishedNewsByLanguage(language, sortBy, pageable);

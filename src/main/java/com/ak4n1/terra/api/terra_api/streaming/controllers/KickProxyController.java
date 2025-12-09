@@ -24,6 +24,22 @@ public class KickProxyController {
 
     @GetMapping("/channels/{slug}")
     public ResponseEntity<String> getChannel(@PathVariable String slug) {
+        // SEGURIDAD: Validar slug para prevenir path traversal y inyección
+        if (slug == null || slug.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Slug is required");
+        }
+        
+        // Solo permitir caracteres alfanuméricos, guiones, underscores (típico de slugs)
+        if (!slug.matches("^[a-zA-Z0-9_-]+$")) {
+            logger.warn("Invalid slug attempted: {}", slug);
+            return ResponseEntity.badRequest().body("Invalid slug format");
+        }
+        
+        // Limitar longitud para prevenir DoS
+        if (slug.length() > 100) {
+            return ResponseEntity.badRequest().body("Slug too long");
+        }
+        
         RestTemplate rest = new RestTemplate();
 
         // 1) Obtener App Access Token desde Kick

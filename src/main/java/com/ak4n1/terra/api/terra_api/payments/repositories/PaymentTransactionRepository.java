@@ -5,6 +5,7 @@ import com.ak4n1.terra.api.terra_api.payments.entities.PaymentStatus;
 import com.ak4n1.terra.api.terra_api.payments.entities.PaymentTransaction;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -31,19 +32,31 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     Optional<PaymentTransaction> findByMpPreferenceId(String mpPreferenceId);
     
     /**
-     * Buscar transacción por external reference
+     * Buscar transacción por ID de orden de PayPal
      */
-    Optional<PaymentTransaction> findByExternalReference(String externalReference);
+    Optional<PaymentTransaction> findByPaypalOrderId(String paypalOrderId);
+    
+    /**
+     * Buscar transacción por UUID externo
+     */
+    Optional<PaymentTransaction> findByExternalUuid(String externalUuid);
     
     /**
      * Buscar transacciones por cuenta
      */
-    List<PaymentTransaction> findByAccountOrderByCreatedAtDesc(AccountMaster account);
+    @Query("SELECT pt FROM PaymentTransaction pt JOIN FETCH pt.coinPackage WHERE pt.account = :account ORDER BY pt.createdAt DESC")
+    List<PaymentTransaction> findByAccountOrderByCreatedAtDesc(@Param("account") AccountMaster account);
     
     /**
      * Buscar transacciones por cuenta con paginación
      */
-    Page<PaymentTransaction> findByAccountOrderByCreatedAtDesc(AccountMaster account, Pageable pageable);
+    @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.account = :account ORDER BY pt.createdAt DESC")
+    Page<PaymentTransaction> findByAccountOrderByCreatedAtDesc(@Param("account") AccountMaster account, Pageable pageable);
+    
+    /**
+     * Contar transacciones por cuenta (para paginación)
+     */
+    long countByAccount(AccountMaster account);
     
     /**
      * Buscar transacciones por estado
@@ -89,4 +102,16 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
      */
     @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.status = 'PENDING' AND pt.createdAt < :expirationDate")
     List<PaymentTransaction> findExpiredPendingTransactions(@Param("expirationDate") Date expirationDate);
+    
+    /**
+     * Contar intentos de pago recientes por cuenta (última hora)
+     */
+    @Query("SELECT COUNT(pt) FROM PaymentTransaction pt WHERE pt.account = :account AND pt.createdAt > :since")
+    long countRecentAttemptsByAccount(@Param("account") AccountMaster account, @Param("since") Date since);
+    
+    /**
+     * Contar compras aprobadas hoy por cuenta
+     */
+    @Query("SELECT COUNT(pt) FROM PaymentTransaction pt WHERE pt.account = :account AND pt.status = 'APPROVED' AND pt.createdAt > :since")
+    long countApprovedSince(@Param("account") AccountMaster account, @Param("since") Date since);
 }
