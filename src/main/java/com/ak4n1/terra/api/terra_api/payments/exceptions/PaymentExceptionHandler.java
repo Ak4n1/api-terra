@@ -43,7 +43,8 @@ public class PaymentExceptionHandler {
         
         Map<String, String> response = new HashMap<>();
         response.put("status", "error");
-        response.put("message", ex.getMessage());
+        // No exponer el mensaje completo, solo un mensaje genérico
+        response.put("message", "Invalid request parameters");
         response.put("code", "INVALID_ARGUMENT");
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
@@ -58,10 +59,41 @@ public class PaymentExceptionHandler {
         
         Map<String, String> response = new HashMap<>();
         response.put("status", "error");
-        response.put("message", ex.getMessage());
+        // No exponer el mensaje completo, solo un mensaje genérico
+        response.put("message", "Payment cannot be processed in current state");
         response.put("code", "ILLEGAL_STATE");
         
         return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+    
+    /**
+     * Manejar paquete no encontrado
+     */
+    @ExceptionHandler(PackageNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handlePackageNotFound(PackageNotFoundException ex) {
+        logger.warn("Package not found: {}", ex.getMessage());
+        
+        Map<String, String> response = new HashMap<>();
+        response.put("status", "error");
+        response.put("message", "Package not found or inactive");
+        response.put("code", "PACKAGE_NOT_FOUND");
+        
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+    
+    /**
+     * Manejar errores de pago específicos
+     */
+    @ExceptionHandler(PaymentException.class)
+    public ResponseEntity<Map<String, String>> handlePaymentException(PaymentException ex) {
+        logger.error("Payment error: {}", ex.getMessage());
+        
+        Map<String, String> response = new HashMap<>();
+        response.put("status", "error");
+        response.put("message", "Payment processing error");
+        response.put("code", "PAYMENT_ERROR");
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
     
     /**

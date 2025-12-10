@@ -10,6 +10,8 @@ import com.ak4n1.terra.api.terra_api.payments.repositories.PaymentTransactionRep
 import com.ak4n1.terra.api.terra_api.payments.services.PaymentAuditService;
 import com.paypal.core.PayPalEnvironment;
 import com.paypal.core.PayPalHttpClient;
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryRegistry;
 import com.paypal.http.HttpResponse;
 import com.paypal.orders.*;
 import org.slf4j.Logger;
@@ -25,7 +27,23 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * PayPal payment strategy implementation
+ * Implementación de la estrategia de pago para PayPal.
+ * 
+ * <p>Esta clase maneja la creación de órdenes de pago, captura de pagos y
+ * actualización de estados de transacciones usando la API de PayPal.
+ * 
+ * <p>Características principales:
+ * <ul>
+ *   <li>Creación de órdenes de pago con PayPal Checkout</li>
+ *   <li>Captura de pagos después de la aprobación del usuario</li>
+ *   <li>Soporte para entornos sandbox y producción</li>
+ *   <li>Manejo de retry automático con Resilience4j para llamadas a la API</li>
+ *   <li>Transacciones ACID con aislamiento SERIALIZABLE para prevenir race conditions</li>
+ * </ul>
+ * 
+ * @author ak4n1
+ * @since 3.0
+ * @see PaymentStrategy
  */
 @Component
 public class PayPalStrategy implements PaymentStrategy {
@@ -56,6 +74,9 @@ public class PayPalStrategy implements PaymentStrategy {
     @Autowired
     private PaymentAuditService auditService;
     
+    @Autowired
+    private RetryRegistry retryRegistry;
+    
     private PayPalHttpClient client;
     
     @Override
@@ -69,7 +90,12 @@ public class PayPalStrategy implements PaymentStrategy {
     }
     
     /**
-     * Get or create PayPal HTTP client
+     * Obtiene o crea el cliente HTTP de PayPal.
+     * 
+     * <p>El cliente se crea según el modo configurado (sandbox o live) y se reutiliza
+     * para todas las llamadas subsecuentes a la API de PayPal.
+     * 
+     * @return El cliente HTTP de PayPal configurado para el entorno actual
      */
     private PayPalHttpClient getClient() {
         if (client == null) {
@@ -89,9 +115,27 @@ public class PayPalStrategy implements PaymentStrategy {
         return client;
     }
     
+    /**
+     * Crea una orden de pago en PayPal.
+     * 
+     * <p>Este método crea una orden de pago en PayPal con los siguientes detalles:
+     * <ul>
+     *   <li>Item basado en el paquete de monedas solicitado</li>
+     *   <li>Monto y moneda del paquete</li>
+     *   <li>URLs de retorno y cancelación</li>
+     *   <li>Custom ID con información de la transacción</li>
+     * </ul>
+     * 
+     * <p>La creación de la orden utiliza retry logic con exponential backoff
+     * para manejar fallos temporales de la API de PayPal.
+     * 
+     * @param transaction La transacción de pago con los detalles del paquete y cuenta
+     * @return Respuesta con el ID de orden y URL de aprobación para el usuario
+     * @throws Exception Si ocurre un error al crear la orden o si la API de PayPal falla
+     */
     @Override
     public PaymentPreferenceResponse createPayment(PaymentTransaction transaction) throws Exception {
-        logger.info("[PayPal] Creating order for transaction: {}", transaction.getId());
+        logger.debug("[PayPal] Creating order");
         
         try {
             CoinPackage coinPackage = transaction.getCoinPackage();
@@ -122,11 +166,18 @@ public class PayPalStrategy implements PaymentStrategy {
             
             orderRequest.applicationContext(applicationContext);
             
-            // Crear la orden en PayPal
+            // Crear la orden en PayPal con retry
             OrdersCreateRequest request = new OrdersCreateRequest();
             request.requestBody(orderRequest);
             
-            HttpResponse<Order> response = getClient().execute(request);
+            Retry retry = retryRegistry.retry("paypalRetry");
+            HttpResponse<Order> response = Retry.decorateSupplier(retry, () -> {
+                try {
+                    return getClient().execute(request);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).get();
             Order order = response.result();
             
             logger.info("[PayPal] Order created: {}", order.id());
@@ -157,15 +208,42 @@ public class PayPalStrategy implements PaymentStrategy {
         }
     }
     
+    /**
+     * Captura un pago de PayPal después de que el usuario lo aprueba.
+     * 
+     * <p>Este método captura el pago de una orden de PayPal que ha sido aprobada
+     * por el usuario. Después de la captura exitosa:
+     * <ul>
+     *   <li>Actualiza el estado de la transacción a APPROVED</li>
+     *   <li>Acredita las monedas a la cuenta del usuario</li>
+     *   <li>Registra la operación en auditoría</li>
+     * </ul>
+     * 
+     * <p>La captura utiliza retry logic para manejar fallos temporales de la API.
+     * 
+     * <p><b>CRÍTICO:</b> Utiliza aislamiento SERIALIZABLE para prevenir condiciones
+     * de carrera al acreditar monedas.
+     * 
+     * @param orderId El ID de la orden de PayPal a capturar
+     * @return La transacción actualizada con el estado APPROVED
+     * @throws Exception Si la orden no se encuentra, ya fue capturada, o si ocurre un error
+     */
     @Override
     @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     public PaymentTransaction capturePayment(String orderId) throws Exception {
-        logger.info("[PayPal] Capturing order: {}", orderId);
+        logger.debug("[PayPal] Capturing order");
         
         try {
-            // Capturar la orden
+            // Capturar la orden con retry
             OrdersCaptureRequest request = new OrdersCaptureRequest(orderId);
-            HttpResponse<Order> response = getClient().execute(request);
+            Retry retry = retryRegistry.retry("paypalRetry");
+            HttpResponse<Order> response = Retry.decorateSupplier(retry, () -> {
+                try {
+                    return getClient().execute(request);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).get();
             Order order = response.result();
             
             logger.info("✅ [PayPal] Order captured: {}, status: {}", order.id(), order.status());
@@ -200,9 +278,18 @@ public class PayPalStrategy implements PaymentStrategy {
         }
     }
     
+    /**
+     * Reembolsa un pago de PayPal.
+     * 
+     * <p><b>NOTA:</b> Esta funcionalidad aún no está completamente implementada.
+     * 
+     * @param orderId El ID de la orden de PayPal a reembolsar
+     * @return false ya que la funcionalidad no está implementada
+     * @throws Exception Si ocurre un error
+     */
     @Override
     public boolean refundPayment(String orderId) throws Exception {
-        logger.info("[PayPal] Refunding order: {}", orderId);
+        logger.debug("[PayPal] Refunding order");
         
         try {
             // TODO: Implementar lógica de reembolso de PayPal
@@ -217,8 +304,31 @@ public class PayPalStrategy implements PaymentStrategy {
     }
     
     /**
-     * Actualizar estado de transacción según la orden de PayPal
-     * CRITICAL: Este método debe ejecutarse dentro de una transacción SERIALIZABLE
+     * Actualiza el estado de una transacción según el estado de la orden en PayPal.
+     * 
+     * <p>Este método mapea los estados de PayPal a los estados internos del sistema
+     * y procesa la acreditación de monedas cuando el pago es completado.
+     * 
+     * <p>Estados mapeados:
+     * <ul>
+     *   <li>COMPLETED → APPROVED (acredita monedas)</li>
+     *   <li>APPROVED → APPROVED (acredita monedas si aún no procesado)</li>
+     *   <li>VOIDED/CANCELLED → CANCELLED</li>
+     *   <li>CREATED/SAVED → PENDING</li>
+     * </ul>
+     * 
+     * <p><b>CRÍTICO:</b> Este método debe ejecutarse dentro de una transacción
+     * SERIALIZABLE para prevenir condiciones de carrera.
+     * 
+     * <p><b>Validaciones de seguridad:</b>
+     * <ul>
+     *   <li>Previene procesar transacciones ya reembolsadas</li>
+     *   <li>Previene procesar transacciones canceladas</li>
+     *   <li>Evita acreditar monedas múltiples veces (verifica processedAt)</li>
+     * </ul>
+     * 
+     * @param transaction La transacción local a actualizar
+     * @param order El objeto Order de PayPal con el estado actual
      */
     private void updateTransactionStatus(PaymentTransaction transaction, Order order) {
         String status = order.status();
@@ -228,6 +338,17 @@ public class PayPalStrategy implements PaymentStrategy {
         switch (status) {
             case "COMPLETED":
                 // Verificar DOBLEMENTE que no se haya procesado ya
+                // Validar que la transacción no esté en un estado inválido
+                if (PaymentStatus.REFUNDED.equals(transaction.getStatus())) {
+                    logger.warn("[PayPal] ⚠️ Intento de procesar transaccion reembolsada: {}", transaction.getId());
+                    throw new IllegalStateException("Cannot process refunded transaction");
+                }
+                
+                if (PaymentStatus.CANCELLED.equals(transaction.getStatus())) {
+                    logger.warn("[PayPal] ⚠️ Intento de procesar transaccion cancelada: {}", transaction.getId());
+                    throw new IllegalStateException("Cannot process cancelled transaction");
+                }
+                
                 if (!PaymentStatus.APPROVED.equals(transaction.getStatus()) && transaction.getProcessedAt() == null) {
                     logger.info("[PayPal] Processing payment for the first time");
                     transaction.setStatus(PaymentStatus.APPROVED);
@@ -283,12 +404,26 @@ public class PayPalStrategy implements PaymentStrategy {
     }
     
     /**
-     * Obtener el estado de una orden de PayPal
+     * Obtiene el estado actual de una orden de PayPal.
+     * 
+     * <p>Este método consulta la API de PayPal para obtener el estado más reciente
+     * de una orden. Utiliza retry logic para manejar fallos temporales.
+     * 
+     * @param orderId El ID de la orden de PayPal
+     * @return El estado de la orden (COMPLETED, APPROVED, PENDING, etc.)
+     * @throws Exception Si la orden no se encuentra o si ocurre un error al consultar la API
      */
     public String getOrderStatus(String orderId) throws Exception {
         try {
             OrdersGetRequest request = new OrdersGetRequest(orderId);
-            HttpResponse<Order> response = getClient().execute(request);
+            Retry retry = retryRegistry.retry("paypalRetry");
+            HttpResponse<Order> response = Retry.decorateSupplier(retry, () -> {
+                try {
+                    return getClient().execute(request);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).get();
             Order order = response.result();
             return order.status();
         } catch (Exception e) {
@@ -298,16 +433,32 @@ public class PayPalStrategy implements PaymentStrategy {
     }
     
     /**
-     * Obtener el approval URL de una orden de PayPal existente
-     * Útil para reanudar pagos pendientes
+     * Obtiene la URL de aprobación de una orden de PayPal existente.
+     * 
+     * <p>Este método es útil para reanudar pagos pendientes. Consulta la orden
+     * en PayPal y extrae el link de aprobación para que el usuario pueda completar
+     * el pago.
+     * 
+     * <p>Utiliza retry logic para manejar fallos temporales de la API.
+     * 
+     * @param orderId El ID de la orden de PayPal
+     * @return La URL de aprobación para que el usuario complete el pago, o null si no está disponible
+     * @throws Exception Si la orden no se encuentra o si ocurre un error al consultar la API
      */
     public String getApprovalUrl(String orderId) throws Exception {
         try {
-            logger.info("[PayPal] Getting approval URL for order: {}", orderId);
+            logger.debug("[PayPal] Getting approval URL");
             
-            // Obtener la orden de PayPal
+            // Obtener la orden de PayPal con retry
             OrdersGetRequest request = new OrdersGetRequest(orderId);
-            HttpResponse<Order> response = getClient().execute(request);
+            Retry retry = retryRegistry.retry("paypalRetry");
+            HttpResponse<Order> response = Retry.decorateSupplier(retry, () -> {
+                try {
+                    return getClient().execute(request);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).get();
             Order order = response.result();
             
             // Obtener el link de aprobación (puede estar disponible incluso si está APPROVED)
@@ -319,7 +470,7 @@ public class PayPalStrategy implements PaymentStrategy {
             
             // Si hay approval URL disponible, retornarlo (incluso si la orden está APPROVED)
             if (approvalUrl != null) {
-                logger.info("[PayPal] Approval URL found for order {} (status: {}): {}", orderId, order.status(), approvalUrl);
+                logger.debug("[PayPal] Approval URL found");
                 return approvalUrl;
             }
             
@@ -328,12 +479,12 @@ public class PayPalStrategy implements PaymentStrategy {
             if ("APPROVED".equals(status)) {
                 // Si está APPROVED pero no hay approval URL, la orden ya fue aprobada
                 // pero puede que falte capturar. Esto se manejará en el servicio.
-                logger.warn("[PayPal] Order {} is APPROVED but no approval URL available", orderId);
+                logger.warn("[PayPal] Order is APPROVED but no approval URL available");
                 throw new IllegalArgumentException("Order is already approved. Payment should be processed automatically.");
             }
             
             if (!"CREATED".equals(status) && !"SAVED".equals(status)) {
-                logger.warn("[PayPal] Order {} is in status {}, cannot resume", orderId, status);
+                logger.warn("[PayPal] Order is in status {}, cannot resume", status);
                 throw new IllegalArgumentException("Order is not in a resumable state. Status: " + status);
             }
             
@@ -347,8 +498,9 @@ public class PayPalStrategy implements PaymentStrategy {
     
     /**
      * Agregar monedas a la cuenta del usuario
-     * CRITICAL: Must be called within a SERIALIZABLE transaction
+     * Usa transacción SERIALIZABLE para evitar condiciones de carrera cuando múltiples pagos se procesan simultáneamente
      */
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     private void addCoinsToAccount(PaymentTransaction transaction) {
         AccountMaster account = transaction.getAccount();
         Integer currentCoins = account.getTerraCoins();

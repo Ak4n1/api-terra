@@ -148,6 +148,18 @@
 		<groupId>org.flywaydb</groupId>
 		<artifactId>flyway-mysql</artifactId>
 	</dependency>
+
+	<!-- Resilience4j para retry logic -->
+	<dependency>
+		<groupId>io.github.resilience4j</groupId>
+		<artifactId>resilience4j-spring-boot3</artifactId>
+		<version>2.1.0</version>
+	</dependency>
+	<dependency>
+		<groupId>io.github.resilience4j</groupId>
+		<artifactId>resilience4j-retry</artifactId>
+		<version>2.1.0</version>
+	</dependency>
 </dependencies>
 
     <build>

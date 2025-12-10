@@ -16,11 +16,47 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
 
 /**
- * PayPal webhook strategy implementation
+ * Implementación de la estrategia de webhook para PayPal.
+ * 
+ * <p>Esta clase maneja la recepción y procesamiento de webhooks de PayPal,
+ * incluyendo la verificación de firmas usando el endpoint oficial de PayPal
+ * y la actualización de estados de transacciones.
+ * 
+ * <p>Características principales:
+ * <ul>
+ *   <li>Verificación de firmas usando endpoint oficial de PayPal (/v1/notifications/verify-webhook-signature)</li>
+ *   <li>Validación de Webhook ID en producción</li>
+ *   <li>Procesamiento de múltiples tipos de eventos (PAYMENT.CAPTURE.COMPLETED, CHECKOUT.ORDER.COMPLETED, etc.)</li>
+ *   <li>Manejo de retry automático para consultas a la API de PayPal</li>
+ *   <li>Validación de estados de transacción antes de procesar</li>
+ *   <li>Transacciones ACID con aislamiento SERIALIZABLE para prevenir race conditions</li>
+ * </ul>
+ * 
+ * <p><b>Seguridad:</b>
+ * <ul>
+ *   <li>Usa endpoint oficial de PayPal para verificación (más seguro que verificación manual)</li>
+ *   <li>Valida Webhook ID en producción</li>
+ *   <li>Timeouts configurados (10 segundos) para evitar bloqueos</li>
+ *   <li>Previene procesamiento de transacciones en estados inválidos</li>
+ * </ul>
+ * 
+ * @author ak4n1
+ * @since 3.0
+ * @see WebhookStrategy
+ * @see <a href="https://developer.paypal.com/api/rest/webhooks/">
+ *      Documentación de Webhooks de PayPal</a>
  */
 @Component
 public class PayPalWebhookStrategy implements WebhookStrategy {
@@ -36,6 +72,18 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
     @Value("${paypal.mode:sandbox}")
     private String mode;
     
+    @Value("${paypal.client.id.sandbox}")
+    private String sandboxClientId;
+    
+    @Value("${paypal.client.secret.sandbox}")
+    private String sandboxClientSecret;
+    
+    @Value("${paypal.client.id.live:}")
+    private String liveClientId;
+    
+    @Value("${paypal.client.secret.live:}")
+    private String liveClientSecret;
+    
     @Autowired
     private PaymentTransactionRepository paymentTransactionRepository;
     
@@ -45,192 +93,232 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
     @Autowired
     private PaymentAuditService auditService;
     
+    /**
+     * Obtiene el nombre del proveedor de webhook.
+     * 
+     * @return El nombre del proveedor: "paypal"
+     */
     @Override
     public String getProviderName() {
         return "paypal";
     }
     
+    /**
+     * Verifica si esta estrategia soporta el proveedor especificado.
+     * 
+     * @param provider Nombre del proveedor a verificar
+     * @return true si el proveedor es "paypal" o "pp" (case-insensitive)
+     */
     @Override
     public boolean supports(String provider) {
         return "paypal".equalsIgnoreCase(provider) || "pp".equalsIgnoreCase(provider);
     }
     
+    /**
+     * Verifica la autenticidad de un webhook de PayPal usando el endpoint oficial.
+     * 
+     * <p>La verificación utiliza el endpoint oficial de PayPal:
+     * <code>/v1/notifications/verify-webhook-signature</code>
+     * 
+     * <p>El proceso incluye:
+     * <ol>
+     *   <li>Validación de Webhook ID (requerido en producción)</li>
+     *   <li>Obtención de token OAuth2 de PayPal</li>
+     *   <li>Construcción del request con todos los headers originales y el payload</li>
+     *   <li>Envío del request al endpoint de verificación de PayPal</li>
+     *   <li>Validación del resultado (verification_status = "SUCCESS")</li>
+     * </ol>
+     * 
+     * <p><b>Requisitos:</b>
+     * <ul>
+     *   <li>Webhook ID debe coincidir con el configurado (en producción)</li>
+     *   <li>Headers de PayPal deben estar presentes (paypal-transmission-id, paypal-transmission-time, etc.)</li>
+     *   <li>Credenciales de PayPal deben estar configuradas</li>
+     * </ul>
+     * 
+     * @param headers Headers HTTP del webhook, incluyendo headers específicos de PayPal
+     * @param payload Cuerpo del webhook como string JSON
+     * @return true si la firma es válida y el webhook es auténtico, false en caso contrario
+     * @throws Exception Si ocurre un error durante la verificación
+     * @see <a href="https://developer.paypal.com/api/rest/webhooks/#verify-webhook-signature">
+     *      Documentación de verificación de webhooks de PayPal</a>
+     */
     @Override
     public boolean verifyWebhook(Map<String, String> headers, String payload) throws Exception {
-        String environment = "live".equalsIgnoreCase(mode) ? "PRODUCCIÓN (LIVE)" : "DESARROLLO (SANDBOX)";
-        logger.info("\n" +
-            "╔══════════════════════════════════════════════════════════════╗\n" +
-            "║  🔐 PAYPAL WEBHOOK - VERIFICACIÓN DE FIRMA                  ║\n" +
-            "║  Entorno: {}                                    ║\n" +
-            "╚══════════════════════════════════════════════════════════════╝",
-            environment);
-        
-        // PayPal envía varios headers para la verificación
         String transmissionId = headers.get("paypal-transmission-id");
         String transmissionSig = headers.get("paypal-transmission-sig");
-        String authAlgo = headers.get("paypal-auth-algo");
-        String certUrl = headers.get("paypal-cert-url");
-        String transmissionTime = headers.get("paypal-transmission-time");
         String webhookId = headers.get("paypal-webhook-id");
         
-        logger.info("\n" +
-            "📋 ──────────────────────────────────────────────────────────\n" +
-            "📋 HEADERS RECIBIDOS DE PAYPAL:\n" +
-            "📋 ──────────────────────────────────────────────────────────\n" +
-            "📋 paypal-transmission-id: {}\n" +
-            "📋 paypal-transmission-sig: {}\n" +
-            "📋 paypal-auth-algo: {}\n" +
-            "📋 paypal-cert-url: {}\n" +
-            "📋 paypal-transmission-time: {}\n" +
-            "📋 paypal-webhook-id: {}\n" +
-            "📋 Payload Length: {} caracteres\n" +
-            "📋 ──────────────────────────────────────────────────────────",
-            transmissionId != null ? transmissionId.substring(0, Math.min(50, transmissionId.length())) + "..." : "null",
-            transmissionSig != null ? transmissionSig.substring(0, Math.min(50, transmissionSig.length())) + "..." : "null",
-            authAlgo != null ? authAlgo : "null",
-            certUrl != null ? (certUrl.length() > 80 ? certUrl.substring(0, 80) + "..." : certUrl) : "null",
-            transmissionTime != null ? transmissionTime : "null",
-            webhookId != null ? webhookId : "null",
-            payload != null ? payload.length() : 0);
-        
-        // Rechazar webhooks sin firma (seguridad en producción)
+        // Rechazar webhooks sin firma
         if (transmissionId == null || transmissionSig == null) {
-            logger.error("\n" +
-                "❌ ═══════════════════════════════════════════════════════════\n" +
-                "❌ NO SE PROPORCIONARON HEADERS DE FIRMA\n" +
-                "❌ ═══════════════════════════════════════════════════════════\n" +
-                "❌ Faltan: paypal-transmission-id o paypal-transmission-sig\n" +
-                "❌ WEBHOOK RECHAZADO - Firma requerida para seguridad\n" +
-                "❌ ═══════════════════════════════════════════════════════════\n");
+            logger.error("[PayPal-Webhook] ❌ Faltan headers de firma - WEBHOOK RECHAZADO");
             return false;
         }
         
-        // Verificar que el webhook ID coincida (si está configurado)
+        // Verificar webhook ID si viene en headers
         String expectedWebhookId = "live".equalsIgnoreCase(mode) ? liveWebhookId : sandboxWebhookId;
         boolean isSandbox = !"live".equalsIgnoreCase(mode);
         
-        if (expectedWebhookId != null && !expectedWebhookId.isEmpty()) {
-            // Si el webhook ID viene en headers, verificarlo estrictamente
-            if (webhookId != null) {
-                if (!webhookId.equals(expectedWebhookId)) {
-                    logger.error("\n" +
-                        "❌ ═══════════════════════════════════════════════════════════\n" +
-                        "❌ WEBHOOK ID NO COINCIDE\n" +
-                        "❌ ═══════════════════════════════════════════════════════════\n" +
-                        "❌ Webhook ID recibido: {}\n" +
-                        "❌ Webhook ID esperado: {}\n" +
-                        "❌ ═══════════════════════════════════════════════════════════\n",
-                        webhookId,
-                        expectedWebhookId);
-                    return false;
-                }
-                logger.info("\n" +
-                    "✅ ──────────────────────────────────────────────────────────\n" +
-                    "✅ WEBHOOK ID VERIFICADO\n" +
-                    "✅ ──────────────────────────────────────────────────────────\n" +
-                    "✅ Webhook ID: {}\n" +
-                    "✅ ──────────────────────────────────────────────────────────",
-                    webhookId);
-            } else {
-                // El webhook ID no viene en headers (puede ser herramienta de test)
-                if (isSandbox) {
-                    // En sandbox, permitir si tiene los headers de firma (para testing)
-                    logger.warn("\n" +
-                        "⚠️  ═══════════════════════════════════════════════════════════\n" +
-                        "⚠️  WEBHOOK ID NO ENCONTRADO EN HEADERS\n" +
-                        "⚠️  ═══════════════════════════════════════════════════════════\n" +
-                        "⚠️  Esto puede ocurrir con la herramienta de test de PayPal\n" +
-                        "⚠️  Permitiendo en modo SANDBOX porque tiene headers de firma\n" +
-                        "⚠️  Webhook ID esperado: {}\n" +
-                        "⚠️  ═══════════════════════════════════════════════════════════\n",
-                        expectedWebhookId);
-                } else {
-                    // En producción (live), siempre requerir el webhook ID
-                    logger.error("\n" +
-                        "❌ ═══════════════════════════════════════════════════════════\n" +
-                        "❌ WEBHOOK ID REQUERIDO EN PRODUCCIÓN\n" +
-                        "❌ ═══════════════════════════════════════════════════════════\n" +
-                        "❌ El header 'paypal-webhook-id' es obligatorio en modo LIVE\n" +
-                        "❌ Webhook ID esperado: {}\n" +
-                        "❌ ═══════════════════════════════════════════════════════════\n",
-                        expectedWebhookId);
-                    return false;
-                }
+        if (expectedWebhookId != null && !expectedWebhookId.isEmpty() && webhookId != null) {
+            if (!webhookId.equals(expectedWebhookId)) {
+                logger.error("[PayPal-Webhook] ❌ Webhook ID no coincide. Recibido: {}, Esperado: {}", webhookId, expectedWebhookId);
+                return false;
             }
-        } else {
-            logger.warn("\n" +
-                "⚠️  ═══════════════════════════════════════════════════════════\n" +
-                "⚠️  WEBHOOK ID NO CONFIGURADO\n" +
-                "⚠️  ═══════════════════════════════════════════════════════════\n" +
-                "⚠️  Configure paypal.webhook.id.sandbox o paypal.webhook.id.live\n" +
-                "⚠️  ═══════════════════════════════════════════════════════════\n");
+        } else if (expectedWebhookId != null && !expectedWebhookId.isEmpty() && webhookId == null && !isSandbox) {
+            logger.error("[PayPal-Webhook] ❌ Webhook ID requerido en producción");
+            return false;
         }
         
-        // TODO: Implementar verificación completa de firma de PayPal
-        // PayPal requiere:
-        // 1. Descargar certificado desde certUrl
-        // 2. Construir cadena: transmissionId|transmissionTime|webhookId|crc32(payload)
-        // 3. Verificar firma usando el certificado y authAlgo (normalmente SHA256withRSA)
-        // Ver: https://developer.paypal.com/api/rest/webhooks/#verify-signature
+        // Verificar firma usando endpoint oficial de PayPal
+        try {
+            boolean signatureValid = verifyWebhookWithPayPalAPI(headers, payload);
+            
+            if (signatureValid) {
+                logger.info("[PayPal-Webhook] ✅ Firma verificada correctamente");
+                return true;
+            } else {
+                logger.error("[PayPal-Webhook] ❌ Verificacion de firma fallida - WEBHOOK RECHAZADO");
+                return false;
+            }
+            
+        } catch (Exception e) {
+            logger.error("[PayPal-Webhook] ❌ Error verificando firma: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+    
+    /**
+     * Verifica un webhook usando el endpoint oficial de PayPal.
+     * 
+     * <p>Este método utiliza el endpoint oficial de PayPal para verificar la autenticidad
+     * del webhook, lo cual es más seguro y confiable que la verificación manual de firmas RSA.
+     * 
+     * <p>El proceso:
+     * <ol>
+     *   <li>Obtiene un token OAuth2 de PayPal</li>
+     *   <li>Construye un request JSON con todos los headers originales y el payload</li>
+     *   <li>Envía el request al endpoint /v1/notifications/verify-webhook-signature</li>
+     *   <li>Evalúa la respuesta: verification_status = "SUCCESS" indica firma válida</li>
+     * </ol>
+     * 
+     * <p><b>Timeout:</b> 10 segundos para evitar bloqueos.
+     * 
+     * @param headers Headers HTTP originales del webhook
+     * @param payload Cuerpo del webhook como string JSON
+     * @return true si PayPal confirma que la firma es válida (verification_status = "SUCCESS")
+     * @throws Exception Si ocurre un error al comunicarse con la API de PayPal
+     * @see <a href="https://developer.paypal.com/api/rest/webhooks/#verify-webhook-signature">
+     *      Documentación de verificación de webhooks de PayPal</a>
+     */
+    private boolean verifyWebhookWithPayPalAPI(Map<String, String> headers, String payload) throws Exception {
+        // Obtener token de acceso de PayPal
+        String accessToken = getPayPalAccessToken();
         
-        // Si llegamos aquí, las verificaciones básicas pasaron
-        logger.info("\n" +
-            "✅ ═══════════════════════════════════════════════════════════\n" +
-            "✅ VERIFICACIÓN BÁSICA EXITOSA - WEBHOOK ACEPTADO\n" +
-            "✅ ═══════════════════════════════════════════════════════════\n" +
-            "✅ Entorno: {}\n" +
-            "✅ Headers de firma presentes\n" +
-            "✅ Webhook ID verificado (si aplica)\n" +
-            "⚠️  NOTA: Verificación completa de firma con certificado pendiente\n" +
-            "✅ ═══════════════════════════════════════════════════════════",
-            environment);
+        // Construir el request body según la documentación de PayPal
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> requestBody = new java.util.HashMap<>();
+        requestBody.put("transmission_id", headers.get("paypal-transmission-id"));
+        requestBody.put("transmission_time", headers.get("paypal-transmission-time"));
+        requestBody.put("cert_url", headers.get("paypal-cert-url"));
+        requestBody.put("auth_algo", headers.get("paypal-auth-algo"));
+        requestBody.put("transmission_sig", headers.get("paypal-transmission-sig"));
         
-        logger.warn("\n" +
-            "⚠️  ═══════════════════════════════════════════════════════════\n" +
-            "⚠️  VERIFICACIÓN DE FIRMA NO IMPLEMENTADA COMPLETAMENTE\n" +
-            "⚠️  ═══════════════════════════════════════════════════════════\n" +
-            "⚠️  Solo se verifica el Webhook ID y headers básicos\n" +
-            "⚠️  La verificación de firma con certificado está pendiente\n" +
-            "⚠️  ═══════════════════════════════════════════════════════════\n");
+        String webhookId = headers.get("paypal-webhook-id");
+        if (webhookId == null || webhookId.isEmpty()) {
+            webhookId = "live".equalsIgnoreCase(mode) ? liveWebhookId : sandboxWebhookId;
+        }
+        requestBody.put("webhook_id", webhookId);
+        requestBody.put("webhook_event", mapper.readTree(payload));
         
-        return true;
+        String requestBodyJson = mapper.writeValueAsString(requestBody);
+        
+        // Determinar la URL base según el modo
+        String baseUrl = "live".equalsIgnoreCase(mode) ? 
+            "https://api.paypal.com" : 
+            "https://api.sandbox.paypal.com";
+        
+        // Crear el request HTTP
+        HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+        
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/v1/notifications/verify-webhook-signature"))
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer " + accessToken)
+            .POST(HttpRequest.BodyPublishers.ofString(requestBodyJson, StandardCharsets.UTF_8))
+            .build();
+        
+        // Ejecutar el request
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        
+        // Parsear la respuesta
+        JsonNode responseBody = mapper.readTree(response.body());
+        String verificationStatus = responseBody.has("verification_status") ? 
+            responseBody.get("verification_status").asText() : null;
+        
+        logger.debug("[PayPal-Webhook] Verificacion: Status={}, Result={}", response.statusCode(), verificationStatus);
+        
+        // PayPal devuelve "SUCCESS" cuando la firma es válida
+        return "SUCCESS".equalsIgnoreCase(verificationStatus);
+    }
+    
+    /**
+     * Obtiene un token de acceso OAuth2 de PayPal.
+     * 
+     * <p>Este método genera un token OAuth2 necesario para autenticar las llamadas
+     * a la API de PayPal. El token se genera usando las credenciales (Client ID y Secret)
+     * configuradas según el modo (sandbox o live).
+     * 
+     * <p><b>Timeout:</b> 10 segundos para evitar bloqueos.
+     * 
+     * @return El token de acceso OAuth2
+     * @throws IOException Si ocurre un error de I/O al comunicarse con PayPal
+     * @throws InterruptedException Si la operación es interrumpida
+     */
+    private String getPayPalAccessToken() throws IOException, InterruptedException {
+        String clientId = "live".equalsIgnoreCase(mode) ? liveClientId : sandboxClientId;
+        String clientSecret = "live".equalsIgnoreCase(mode) ? liveClientSecret : sandboxClientSecret;
+        String baseUrl = "live".equalsIgnoreCase(mode) ? 
+            "https://api.paypal.com" : 
+            "https://api.sandbox.paypal.com";
+        
+        String credentials = clientId + ":" + clientSecret;
+        String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+        
+        HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+        
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/v1/oauth2/token"))
+            .header("Authorization", "Basic " + encodedCredentials)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(HttpRequest.BodyPublishers.ofString("grant_type=client_credentials"))
+            .build();
+        
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode jsonResponse = mapper.readTree(response.body());
+        return jsonResponse.get("access_token").asText();
     }
     
     @Override
     @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     public String processWebhook(String payload) throws Exception {
-        logger.info("[PayPal-Webhook] Processing webhook");
-        
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode webhookData = mapper.readTree(payload);
             
-            // Extraer información del webhook
-            String apiVersion = webhookData.has("api_version") ? webhookData.get("api_version").asText() : null;
             String eventType = webhookData.has("event_type") ? webhookData.get("event_type").asText() : null;
-            String webhookId = webhookData.has("id") ? webhookData.get("id").asText() : null;
-            
-            logger.info("\n" +
-                "📦 ──────────────────────────────────────────────────────────\n" +
-                "📦 PAYLOAD DEL WEBHOOK:\n" +
-                "📦 ──────────────────────────────────────────────────────────\n" +
-                "📦 API Version: {}\n" +
-                "📦 Event Type: {}\n" +
-                "📦 Webhook ID: {}\n" +
-                "📦 Payload completo (primeros 200 chars):\n" +
-                "📦 {}\n" +
-                "📦 ──────────────────────────────────────────────────────────",
-                apiVersion != null ? apiVersion : "no especificado",
-                eventType != null ? eventType : "no encontrado",
-                webhookId != null ? webhookId : "no encontrado",
-                payload.length() > 200 ? payload.substring(0, 200) + "..." : payload);
             
             if (eventType == null) {
                 logger.error("[PayPal-Webhook] ❌ No event_type found in webhook");
                 return "ERROR: No event_type found";
             }
             
-            logger.info("[PayPal-Webhook] ✅ Event type: {}", eventType);
+            logger.info("[PayPal-Webhook] Procesando evento: {}", eventType);
             
             // Procesar según el tipo de evento
             switch (eventType) {
@@ -263,10 +351,8 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
             JsonNode resource = webhookData.get("resource");
             String captureId = resource.get("id").asText();
             
-            // Extraer custom_id que contiene nuestro transaction ID
             String customId = resource.has("custom_id") ? resource.get("custom_id").asText() : null;
             
-            // Extraer order_id como fallback
             String orderId = null;
             if (resource.has("supplementary_data")) {
                 JsonNode supplementaryData = resource.get("supplementary_data");
@@ -275,48 +361,47 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
                 }
             }
             
-            logger.info("[PayPal-Webhook] Payment captured: {}, customId (UUID): {}, orderId: {}", captureId, customId, orderId);
+            logger.debug("[PayPal-Webhook] Payment captured: {}", captureId);
             
             PaymentTransaction transaction = null;
-            
-            // Intentar buscar por UUID primero
+
             if (customId != null) {
                 transaction = paymentTransactionRepository.findByExternalUuid(customId).orElse(null);
-                if (transaction != null) {
-                    logger.info("[PayPal-Webhook] Transaction found by UUID: {}", transaction.getId());
-                }
             }
-            
-            // Si no se encontró por UUID, intentar por order_id
+
             if (transaction == null && orderId != null) {
                 transaction = paymentTransactionRepository.findByPaypalOrderId(orderId).orElse(null);
-                if (transaction != null) {
-                    logger.info("[PayPal-Webhook] Transaction found by orderId: {}", transaction.getId());
-                }
             }
-            
+
             if (transaction != null) {
-                // VERIFICACIÓN DOBLE: Estado Y processedAt
+                // Validar que la transacción no esté en un estado inválido
+                if (PaymentStatus.REFUNDED.equals(transaction.getStatus())) {
+                    logger.warn("[PayPal-Webhook] ⚠️ Intento de procesar transaccion reembolsada: {}", transaction.getId());
+                    throw new IllegalStateException("Cannot process refunded transaction");
+                }
+                
+                if (PaymentStatus.CANCELLED.equals(transaction.getStatus())) {
+                    logger.warn("[PayPal-Webhook] ⚠️ Intento de procesar transaccion cancelada: {}", transaction.getId());
+                    throw new IllegalStateException("Cannot process cancelled transaction");
+                }
+                
                 if (!PaymentStatus.APPROVED.equals(transaction.getStatus()) && transaction.getProcessedAt() == null) {
-                    logger.info("[PayPal-Webhook] Processing payment for the first time (webhook)");
                     transaction.setStatus(PaymentStatus.APPROVED);
-                    transaction.markAsProcessed(); // Marcar como procesado
+                    transaction.markAsProcessed();
                     transaction.setUpdatedAt(new Date());
-                    
-                    // Guardar ANTES de agregar monedas
+
                     paymentTransactionRepository.save(transaction);
                     paymentTransactionRepository.flush();
-                    
-                    // Agregar monedas
+
                     addCoinsToAccount(transaction);
+                    logger.info("[PayPal-Webhook] ✅ Pago procesado exitosamente");
                 } else {
-                    logger.warn("[PayPal-Webhook] Payment already processed! Status: {}, ProcessedAt: {}", 
-                               transaction.getStatus(), transaction.getProcessedAt());
+                    logger.debug("[PayPal-Webhook] Pago ya procesado");
                 }
                 return "Payment captured successfully";
             }
-            
-            logger.warn("[PayPal-Webhook] Transaction not found. UUID: {}, OrderId: {}", customId, orderId);
+
+            logger.warn("[PayPal-Webhook] ⚠️ Transaccion no encontrada");
             return "Transaction not found";
         } catch (Exception e) {
             logger.error("[PayPal-Webhook] Error processing capture completed: {}", e.getMessage());
@@ -325,7 +410,13 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
     }
     
     /**
-     * Procesar evento PAYMENT.CAPTURE.DENIED
+     * Procesa el evento PAYMENT.CAPTURE.DENIED de PayPal.
+     * 
+     * <p>Este evento se dispara cuando un pago es denegado. El método actualiza
+     * el estado de la transacción a REJECTED.
+     * 
+     * @param webhookData El payload del webhook parseado como JsonNode
+     * @return Mensaje de resultado del procesamiento
      */
     private String processPaymentCaptureDenied(JsonNode webhookData) {
         try {
@@ -333,7 +424,7 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
             String captureId = resource.get("id").asText();
             String customId = resource.has("custom_id") ? resource.get("custom_id").asText() : null;
             
-            logger.info("[PayPal-Webhook] Payment denied: {}, customId (UUID): {}", captureId, customId);
+            logger.debug("[PayPal-Webhook] Payment denied: {}", captureId);
             
             if (customId != null) {
                 PaymentTransaction transaction = paymentTransactionRepository.findByExternalUuid(customId)
@@ -355,14 +446,25 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
     }
     
     /**
-     * Procesar evento PAYMENT.CAPTURE.REFUNDED
+     * Procesa el evento PAYMENT.CAPTURE.REFUNDED de PayPal.
+     * 
+     * <p><b>NOTA:</b> Esta funcionalidad aún no está completamente implementada.
+     * Cuando se implemente, debería:
+     * <ul>
+     *   <li>Actualizar el estado de la transacción a REFUNDED</li>
+     *   <li>Restar las monedas acreditadas de la cuenta del usuario</li>
+     *   <li>Registrar la operación en auditoría</li>
+     * </ul>
+     * 
+     * @param webhookData El payload del webhook parseado como JsonNode
+     * @return Mensaje indicando que el evento fue recibido pero no procesado
      */
     private String processPaymentCaptureRefunded(JsonNode webhookData) {
         try {
             JsonNode resource = webhookData.get("resource");
             String refundId = resource.get("id").asText();
             
-            logger.info("[PayPal-Webhook] Payment refunded: {}", refundId);
+            logger.debug("[PayPal-Webhook] Payment refunded: {}", refundId);
             
             // TODO: Implementar lógica de reembolso (restar monedas, etc.)
             
@@ -374,29 +476,33 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
     }
     
     /**
-     * Procesar evento CHECKOUT.ORDER.APPROVED
+     * Procesa el evento CHECKOUT.ORDER.APPROVED de PayPal.
+     * 
+     * <p>Este evento se dispara cuando el usuario aprueba una orden en PayPal.
+     * Por sí solo no acredita monedas, solo indica que el usuario aprobó el pago.
+     * Las monedas se acreditan cuando se recibe PAYMENT.CAPTURE.COMPLETED o
+     * CHECKOUT.ORDER.COMPLETED.
+     * 
+     * @param webhookData El payload del webhook parseado como JsonNode
+     * @return Mensaje de resultado del procesamiento
      */
     private String processCheckoutOrderApproved(JsonNode webhookData) {
         try {
             JsonNode resource = webhookData.get("resource");
             String orderId = resource.get("id").asText();
             
-            logger.info("[PayPal-Webhook] Order approved: {}", orderId);
-            
             PaymentTransaction transaction = paymentTransactionRepository.findByPaypalOrderId(orderId)
                     .orElse(null);
             
             if (transaction != null) {
-                // NO CAMBIAR el estado si ya fue capturado/procesado
                 if (transaction.getProcessedAt() != null) {
-                    logger.info("[PayPal-Webhook] Order already processed (capture finished). Status: {}", transaction.getStatus());
+                    logger.debug("[PayPal-Webhook] Orden ya procesada");
                     return "Order already processed (capture completed)";
                 }
                 
-                // Si aún no fue procesado, solo actualizar timestamp (no cambiar estado)
-                logger.info("[PayPal-Webhook] Order approved but not captured yet. Keeping status: {}", transaction.getStatus());
                 transaction.setUpdatedAt(new Date());
                 paymentTransactionRepository.save(transaction);
+                logger.debug("[PayPal-Webhook] Orden aprobada, esperando captura");
                 return "Order approved processed";
             }
             
@@ -408,22 +514,40 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
     }
     
     /**
-     * Procesar evento CHECKOUT.ORDER.COMPLETED
+     * Procesa el evento CHECKOUT.ORDER.COMPLETED de PayPal.
+     * 
+     * <p>Este evento se dispara cuando una orden es completada. El método:
+     * <ul>
+     *   <li>Busca la transacción por paypal_order_id</li>
+     *   <li>Valida que la transacción no esté en un estado inválido</li>
+     *   <li>Actualiza el estado a APPROVED</li>
+     *   <li>Acredita las monedas a la cuenta del usuario</li>
+     * </ul>
+     * 
+     * @param webhookData El payload del webhook parseado como JsonNode
+     * @return Mensaje de resultado del procesamiento
      */
     private String processCheckoutOrderCompleted(JsonNode webhookData) {
         try {
             JsonNode resource = webhookData.get("resource");
             String orderId = resource.get("id").asText();
             
-            logger.info("[PayPal-Webhook] Order completed: {}", orderId);
-            
             PaymentTransaction transaction = paymentTransactionRepository.findByPaypalOrderId(orderId)
                     .orElse(null);
             
             if (transaction != null) {
-                // VERIFICACIÓN DOBLE: Estado Y processedAt
+                // Validar que la transacción no esté en un estado inválido
+                if (PaymentStatus.REFUNDED.equals(transaction.getStatus())) {
+                    logger.warn("[PayPal-Webhook] ⚠️ Intento de procesar transaccion reembolsada: {}", transaction.getId());
+                    throw new IllegalStateException("Cannot process refunded transaction");
+                }
+                
+                if (PaymentStatus.CANCELLED.equals(transaction.getStatus())) {
+                    logger.warn("[PayPal-Webhook] ⚠️ Intento de procesar transaccion cancelada: {}", transaction.getId());
+                    throw new IllegalStateException("Cannot process cancelled transaction");
+                }
+                
                 if (!PaymentStatus.APPROVED.equals(transaction.getStatus()) && transaction.getProcessedAt() == null) {
-                    logger.info("[PayPal-Webhook] Processing order completion for the first time");
                     transaction.setStatus(PaymentStatus.APPROVED);
                     transaction.markAsProcessed();
                     transaction.setUpdatedAt(new Date());
@@ -432,9 +556,9 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
                     paymentTransactionRepository.flush();
                     
                     addCoinsToAccount(transaction);
+                    logger.info("[PayPal-Webhook] ✅ Orden completada y procesada");
                 } else {
-                    logger.warn("[PayPal-Webhook] Order already processed! Status: {}, ProcessedAt: {}", 
-                               transaction.getStatus(), transaction.getProcessedAt());
+                    logger.debug("[PayPal-Webhook] Orden ya procesada");
                 }
                 return "Order completed processed";
             }
@@ -448,8 +572,9 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
     
     /**
      * Agregar monedas a la cuenta del usuario
-     * CRITICAL: Must be called within a SERIALIZABLE transaction
+     * Usa transacción SERIALIZABLE para evitar condiciones de carrera cuando múltiples webhooks procesan el mismo pago
      */
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     private void addCoinsToAccount(PaymentTransaction transaction) {
         AccountMaster account = transaction.getAccount();
         Integer currentCoins = account.getTerraCoins();
@@ -460,7 +585,7 @@ public class PayPalWebhookStrategy implements WebhookStrategy {
         
         Integer newCoins = currentCoins + transaction.getCoinsAmount();
         
-        logger.info("[PayPal-Webhook] Adding {} coins to account {}. Total: {} -> {}", 
+        logger.info("[PayPal-Webhook] 💰 Agregando {} monedas a cuenta {}. Total: {} -> {}", 
                    transaction.getCoinsAmount(), account.getId(), currentCoins, newCoins);
         
         // Actualizar saldo

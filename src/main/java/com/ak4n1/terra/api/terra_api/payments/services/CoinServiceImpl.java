@@ -106,7 +106,7 @@ public class CoinServiceImpl implements CoinService {
         // Registrar en auditoría (si falla, rollback automático)
         auditService.auditAdminAdjustment(account, currentCoins, newCoins, reason, "SYSTEM", null);
         
-        logger.info("Monedas agregadas manualmente. Cuenta: {}, Cantidad: {}, Razón: {}", 
+        logger.info("Monedas agregadas manualmente. Cuenta: {}, Cantidad: {}, Razon: {}", 
                    accountId, coinsAmount, reason);
     }
     

@@ -3,8 +3,6 @@ package com.ak4n1.terra.api.terra_api.payments.controllers;
 import com.ak4n1.terra.api.terra_api.payments.factory.PaymentStrategyFactory;
 import com.ak4n1.terra.api.terra_api.payments.strategies.WebhookStrategy;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,8 +22,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/webhooks")
 public class WebhookController {
-    
-    private static final Logger logger = LoggerFactory.getLogger(WebhookController.class);
     
     @Autowired
     private PaymentStrategyFactory paymentStrategyFactory;
@@ -58,18 +54,9 @@ public class WebhookController {
      * Método genérico para procesar webhooks de cualquier proveedor
      */
     private ResponseEntity<Map<String, String>> handleWebhook(HttpServletRequest request, String provider) {
-        logger.info("\n" +
-            "╔══════════════════════════════════════════════════════════════╗\n" +
-            "║  🔔 WEBHOOK RECIBIDO - {}                                   ║\n" +
-            "╚══════════════════════════════════════════════════════════════╝",
-            provider.toUpperCase());
-        logger.info("📥 [WEBHOOK-{}] IP: {}, User-Agent: {}", provider, request.getRemoteAddr(), request.getHeader("User-Agent"));
-        
         try {
             // Leer el payload
             String payload = readRequestBody(request);
-            logger.info("📦 [WEBHOOK-{}] Payload size: {} caracteres", provider, payload.length());
-            logger.debug("📦 [WEBHOOK-{}] Full payload: {}", provider, payload);
             
             // Extraer headers
             Map<String, String> headers = extractHeaders(request);
@@ -80,7 +67,6 @@ public class WebhookController {
             // Verificar firma del webhook
             boolean verified = strategy.verifyWebhook(headers, payload);
             if (!verified) {
-                logger.error("❌ [WEBHOOK-{}] Signature verification FAILED - rejecting webhook", provider);
                 Map<String, String> response = new HashMap<>();
                 response.put("status", "error");
                 response.put("message", "Invalid webhook signature");
@@ -88,9 +74,7 @@ public class WebhookController {
             }
             
             // Procesar el webhook
-            logger.info("⚙️  [WEBHOOK-{}] Procesando webhook...", provider);
             String result = strategy.processWebhook(payload);
-            logger.info("✅ [WEBHOOK-{}] Webhook procesado exitosamente: {}", provider, result);
             
             Map<String, String> response = new HashMap<>();
             response.put("status", "success");
@@ -98,13 +82,11 @@ public class WebhookController {
             return ResponseEntity.ok(response);
             
         } catch (IllegalArgumentException e) {
-            logger.error("❌ [WEBHOOK-{}] Unsupported provider: {}", provider, e.getMessage());
             Map<String, String> response = new HashMap<>();
             response.put("status", "error");
             response.put("message", "Unsupported webhook provider");
             return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
-            logger.error("❌ [WEBHOOK-{}] Error processing webhook: {}", provider, e.getMessage(), e);
             Map<String, String> response = new HashMap<>();
             response.put("status", "error");
             response.put("message", "Internal server error");
@@ -114,6 +96,7 @@ public class WebhookController {
     
     /**
      * Extraer headers del request y convertirlos a un Map
+     * También incluye query parameters como headers custom para Mercado Pago
      */
     private Map<String, String> extractHeaders(HttpServletRequest request) {
         Map<String, String> headers = new HashMap<>();
@@ -124,109 +107,34 @@ public class WebhookController {
             headers.put(headerName.toLowerCase(), request.getHeader(headerName));
         }
         
+        // Agregar query parameters como headers custom para Mercado Pago
+        // Mercado Pago envía el ID como query parameter en diferentes formatos:
+        // - ?id=137154843764&topic=payment
+        // - ?data.id=137154843764&type=payment
+        String queryId = request.getParameter("id");
+        if (queryId != null && !queryId.isEmpty()) {
+            headers.put("x-query-id", queryId);
+        }
+        
+        // También buscar data.id (formato alternativo de Mercado Pago)
+        String queryDataId = request.getParameter("data.id");
+        if (queryDataId != null && !queryDataId.isEmpty()) {
+            headers.put("x-query-data-id", queryDataId);
+        }
+        
+        String queryTopic = request.getParameter("topic");
+        if (queryTopic != null && !queryTopic.isEmpty()) {
+            headers.put("x-query-topic", queryTopic);
+        }
+        
+        String queryType = request.getParameter("type");
+        if (queryType != null && !queryType.isEmpty()) {
+            headers.put("x-query-type", queryType);
+        }
+        
         return headers;
     }
     
-    /**
-     * Endpoint de prueba para webhooks
-     */
-    @PostMapping("/webhook/test")
-    public ResponseEntity<Map<String, Object>> testWebhook(@RequestBody String payload) {
-        try {
-            logger.info("Webhook de prueba recibido (longitud: {} chars)", payload != null ? payload.length() : 0);
-            logger.trace("Payload de prueba (solo TRACE): {}", payload);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "success");
-            response.put("message", "Webhook de prueba procesado correctamente");
-            // SEGURIDAD: No devolver payload completo en respuesta
-            response.put("payloadLength", payload != null ? payload.length() : 0);
-            response.put("timestamp", System.currentTimeMillis());
-            
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            logger.error("Error en webhook de prueba: {}", e.getMessage(), e);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "error");
-            response.put("message", "Error en webhook de prueba");
-            response.put("error", e.getMessage());
-            
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
-    
-    /**
-     * Endpoint para simular webhook de Mercado Pago (solo para testing)
-     */
-    @PostMapping("/webhook/simulate")
-    public ResponseEntity<Map<String, Object>> simulateMercadoPagoWebhook(
-            @RequestParam(value = "paymentId", required = false) String paymentId,
-            @RequestParam(value = "preferenceId", required = false) String preferenceId,
-            @RequestParam(value = "status", defaultValue = "approved") String status) {
-        
-        try {
-            logger.info("🎭 [SIMULATE] Simulando webhook de Mercado Pago");
-            logger.info("🎭 [SIMULATE] Payment ID: {}", paymentId);
-            logger.info("🎭 [SIMULATE] Preference ID: {}", preferenceId);
-            logger.info("🎭 [SIMULATE] Status: {}", status);
-            
-            // Crear payload simulado de Mercado Pago
-            String simulatedPayload = String.format(
-                "{\"resource\":\"%s\",\"topic\":\"payment\"}",
-                paymentId != null ? paymentId : "123456789"
-            );
-            
-            logger.info("🎭 [SIMULATE] Payload simulado (longitud: {} chars)", simulatedPayload.length());
-            logger.trace("🎭 [SIMULATE] Payload simulado completo (solo TRACE): {}", simulatedPayload);
-            
-            // Procesar el webhook simulado usando la estrategia
-            WebhookStrategy strategy = paymentStrategyFactory.getWebhookStrategy("mercadopago");
-            String result = strategy.processWebhook(simulatedPayload);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "success");
-            response.put("message", "Webhook simulado procesado correctamente");
-            response.put("result", result);
-            response.put("paymentId", paymentId);
-            response.put("preferenceId", preferenceId);
-            response.put("webhookStatus", status);
-            response.put("timestamp", System.currentTimeMillis());
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            logger.error("❌ [SIMULATE] Error en webhook simulado: {}", e.getMessage(), e);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "error");
-            response.put("message", "Error en webhook simulado");
-            response.put("error", e.getMessage());
-            
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
-    
-    /**
-     * Endpoint para verificar que el webhook está funcionando
-     */
-    @GetMapping("/webhook/health")
-    public ResponseEntity<Map<String, Object>> webhookHealth(HttpServletRequest request) {
-        logger.info("🏥 [HEALTH] Verificación de salud del webhook");
-        logger.info("🏥 [HEALTH] IP Remota: {}", request.getRemoteAddr());
-        logger.info("🏥 [HEALTH] User-Agent: {}", request.getHeader("User-Agent"));
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "healthy");
-        response.put("message", "Webhook endpoint funcionando correctamente");
-        response.put("timestamp", System.currentTimeMillis());
-        response.put("service", "Terra API Payments");
-        response.put("version", "1.0.0");
-        response.put("environment", "production");
-        
-        logger.info("✅ [HEALTH] Webhook saludable - respuesta enviada");
-        return ResponseEntity.ok(response);
-    }
     
     /**
      * Leer el cuerpo del request como String

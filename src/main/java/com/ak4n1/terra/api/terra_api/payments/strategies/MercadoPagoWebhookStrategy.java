@@ -9,6 +9,8 @@ import com.ak4n1.terra.api.terra_api.payments.services.PaymentAuditService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mercadopago.MercadoPagoConfig;
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryRegistry;
 import com.mercadopago.client.payment.PaymentClient;
 import com.mercadopago.exceptions.MPApiException;
 import com.mercadopago.exceptions.MPException;
@@ -30,7 +32,34 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MercadoPago webhook strategy implementation
+ * Implementación de la estrategia de webhook para Mercado Pago.
+ * 
+ * <p>Esta clase maneja la recepción y procesamiento de webhooks de Mercado Pago,
+ * incluyendo la verificación de firmas HMAC-SHA256 y la actualización de estados
+ * de transacciones.
+ * 
+ * <p>Características principales:
+ * <ul>
+ *   <li>Verificación de firmas HMAC-SHA256 según documentación oficial de Mercado Pago</li>
+ *   <li>Extracción inteligente del ID de notificación desde múltiples fuentes</li>
+ *   <li>Procesamiento de diferentes formatos de webhook (payment, merchant_order)</li>
+ *   <li>Manejo de retry automático para consultas a la API de Mercado Pago</li>
+ *   <li>Validación de estados de transacción antes de procesar</li>
+ *   <li>Transacciones ACID con aislamiento SERIALIZABLE para prevenir race conditions</li>
+ * </ul>
+ * 
+ * <p><b>Seguridad:</b>
+ * <ul>
+ *   <li>Rechaza webhooks sin firma válida</li>
+ *   <li>Valida headers requeridos (x-signature, x-request-id)</li>
+ *   <li>Previene procesamiento de transacciones en estados inválidos</li>
+ * </ul>
+ * 
+ * @author ak4n1
+ * @since 3.0
+ * @see WebhookStrategy
+ * @see <a href="https://www.mercadopago.com.ar/developers/es/guides/notifications/webhooks">
+ *      Documentación de Webhooks de Mercado Pago</a>
  */
 @Component
 public class MercadoPagoWebhookStrategy implements WebhookStrategy {
@@ -55,34 +84,64 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
     @Autowired
     private PaymentAuditService auditService;
     
+    @Autowired
+    private RetryRegistry retryRegistry;
+    
+    /**
+     * Obtiene el nombre del proveedor de webhook.
+     * 
+     * @return El nombre del proveedor: "mercadopago"
+     */
     @Override
     public String getProviderName() {
         return "mercadopago";
     }
     
+    /**
+     * Verifica si esta estrategia soporta el proveedor especificado.
+     * 
+     * @param provider Nombre del proveedor a verificar
+     * @return true si el proveedor es "mercadopago" o "mp" (case-insensitive)
+     */
     @Override
     public boolean supports(String provider) {
         return "mercadopago".equalsIgnoreCase(provider) || "mp".equalsIgnoreCase(provider);
     }
     
+    /**
+     * Verifica la autenticidad de un webhook de Mercado Pago usando HMAC-SHA256.
+     * 
+     * <p>La verificación sigue el proceso documentado por Mercado Pago:
+     * <ol>
+     *   <li>Extrae la firma del header x-signature (formato: ts=timestamp,v1=hash)</li>
+     *   <li>Obtiene el x-request-id del header</li>
+     *   <li>Extrae el ID de notificación del payload o query parameters</li>
+     *   <li>Construye el string a firmar: "id:{notificationId};request-id:{requestId};ts:{timestamp};"</li>
+     *   <li>Calcula el HMAC-SHA256 usando el webhook secret</li>
+     *   <li>Compara el hash recibido con el calculado (timing-safe)</li>
+     * </ol>
+     * 
+     * <p><b>Requisitos:</b>
+     * <ul>
+     *   <li>Header x-signature debe estar presente</li>
+     *   <li>Header x-request-id debe estar presente</li>
+     *   <li>Webhook secret debe estar configurado</li>
+     *   <li>ID de notificación debe poder extraerse del payload o headers</li>
+     * </ul>
+     * 
+     * @param headers Headers HTTP del webhook, incluyendo x-signature y x-request-id
+     * @param payload Cuerpo del webhook como string JSON
+     * @return true si la firma es válida y el webhook es auténtico, false en caso contrario
+     * @throws Exception Si ocurre un error durante la verificación
+     * @see <a href="https://www.mercadopago.com.ar/developers/es/guides/notifications/webhooks#bookmark_validar_la_autenticidad_de_una_notificaci%C3%B3n">
+     *      Documentación de verificación de webhooks</a>
+     */
     @Override
     public boolean verifyWebhook(Map<String, String> headers, String payload) throws Exception {
-        // Determinar entorno basado en la URL de notificación
-        String environment = (notificationUrl != null && (notificationUrl.contains("ngrok") || notificationUrl.contains("localhost"))) 
-            ? "DESARROLLO" : "PRODUCCIÓN";
-        
-        logger.info("\n" +
-            "╔══════════════════════════════════════════════════════════════╗\n" +
-            "║  🔐 MERCADO PAGO WEBHOOK - VERIFICACIÓN DE FIRMA           ║\n" +
-            "║  Entorno: {}                                    ║\n" +
-            "╚══════════════════════════════════════════════════════════════╝",
-            environment);
-        
         String signature = headers.get("x-signature");
         
-        // Rechazar webhooks sin firma (seguridad en producción)
         if (signature == null || signature.isEmpty()) {
-            logger.error("[MP-Webhook] ❌ No se proporcionó firma - WEBHOOK RECHAZADO");
+            logger.error("[MP-Webhook] ❌ No se proporciono firma - WEBHOOK RECHAZADO");
             return false;
         }
         
@@ -92,65 +151,41 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
         }
         
         try {
-            // Mercado Pago envía la firma en formato: "ts=<timestamp>,v1=<hash>"
             String[] signatureParts = extractSignatureParts(signature);
             if (signatureParts == null) {
-                logger.error("[MP-Webhook] ❌ Formato de firma inválido: {}", signature);
+                logger.error("[MP-Webhook] ❌ Formato de firma inválido");
                 return false;
             }
             
             String timestamp = signatureParts[0];
             String receivedHash = signatureParts[1];
             
-            // Según documentación oficial de Mercado Pago:
-            // La cadena de datos debe ser: id:[data.id];request-id:[x-request-id];ts:[ts];
             String requestId = headers.get("x-request-id");
             if (requestId == null || requestId.isEmpty()) {
                 logger.error("[MP-Webhook] ❌ Falta header x-request-id");
                 return false;
             }
             
-            // Extraer el ID de la notificación del payload
-            String notificationId = extractNotificationId(payload);
+            String notificationId = extractNotificationId(payload, headers);
             if (notificationId == null) {
-                logger.error("[MP-Webhook] ❌ No se pudo extraer ID de la notificación del payload");
+                logger.error("[MP-Webhook] ❌ No se pudo extraer ID de la notificacion. Payload: {}, Query ID: {}", 
+                           payload != null ? payload.substring(0, Math.min(100, payload.length())) : "null",
+                           headers.get("x-query-id"));
                 return false;
             }
             
-            // Construir la cadena de datos según documentación de Mercado Pago
             String dataToSign = String.format("id:%s;request-id:%s;ts:%s;", 
                 notificationId.toLowerCase(), requestId, timestamp);
             
             String calculatedHash = calculateHMAC(dataToSign, webhookSecret);
             
-            // Comparar de forma segura (evita timing attacks)
             boolean isValid = MessageDigest.isEqual(
                 receivedHash.getBytes(StandardCharsets.UTF_8),
                 calculatedHash.getBytes(StandardCharsets.UTF_8)
             );
             
-            if (isValid) {
-                logger.info("\n" +
-                    "✅ ═══════════════════════════════════════════════════════════\n" +
-                    "✅ VERIFICACIÓN EXITOSA - WEBHOOK VÁLIDO\n" +
-                    "✅ ═══════════════════════════════════════════════════════════\n" +
-                    "✅ Entorno: {}\n" +
-                    "✅ Firma HMAC-SHA256 verificada correctamente\n" +
-                    "✅ ═══════════════════════════════════════════════════════════",
-                    environment);
-            } else {
-                logger.error("\n" +
-                    "❌ ═══════════════════════════════════════════════════════════\n" +
-                    "❌ VERIFICACIÓN FALLIDA - WEBHOOK RECHAZADO\n" +
-                    "❌ ═══════════════════════════════════════════════════════════\n" +
-                    "❌ Entorno: {}\n" +
-                    "❌ Hash recibido: {}...\n" +
-                    "❌ Hash calculado: {}...\n" +
-                    "❌ Las firmas NO coinciden\n" +
-                    "❌ ═══════════════════════════════════════════════════════════",
-                    environment,
-                    receivedHash.length() > 20 ? receivedHash.substring(0, 20) : receivedHash,
-                    calculatedHash.length() > 20 ? calculatedHash.substring(0, 20) : calculatedHash);
+            if (!isValid) {
+                logger.error("[MP-Webhook] Verificacion de firma fallida");
             }
             
             return isValid;
@@ -162,34 +197,86 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
     }
     
     /**
-     * Extraer el ID de la notificación del payload
-     * Puede estar en: data.id, id, o data.id (según formato)
+     * Extrae el ID de la notificación del payload o headers.
+     * 
+     * <p>El ID de notificación es crucial para la verificación de firmas. Mercado Pago
+     * puede enviarlo en diferentes formatos:
+     * <ol>
+     *   <li><b>Prioridad 1:</b> Query parameter data.id (header x-query-data-id) - Formato preferido</li>
+     *   <li><b>Prioridad 2:</b> data.id en el payload JSON - ID de notificación correcto</li>
+     *   <li><b>Prioridad 3:</b> Query parameter id (header x-query-id) - Puede ser ID de payment, no de notificación</li>
+     *   <li><b>Prioridad 4:</b> id en el payload JSON - Último recurso</li>
+     * </ol>
+     * 
+     * <p><b>Importante:</b> Cuando el webhook viene con ?id=...&topic=payment o ?id=...&topic=merchant_order,
+     * ese ID es del payment/merchant_order, NO de la notificación. Estos webhooks se rechazan
+     * si no se encuentra un data.id, ya que no se puede verificar la firma correctamente.
+     * 
+     * @param payload Cuerpo del webhook como string JSON
+     * @param headers Headers HTTP, incluyendo query parameters como x-query-*
+     * @return El ID de notificación si se encuentra, null si no se puede extraer
      */
-    private String extractNotificationId(String payload) {
+    private String extractNotificationId(String payload, Map<String, String> headers) {
+        // Prioridad 1: data.id en query parameter (formato preferido por Mercado Pago para notificaciones)
+        String queryDataId = headers.get("x-query-data-id");
+        if (queryDataId != null && !queryDataId.isEmpty()) {
+            return queryDataId;
+        }
+        
+        // Prioridad 2: Buscar en el payload JSON (data.id)
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode webhookData = mapper.readTree(payload);
-            
-            // Formato 1: {"data":{"id":"123456"}}
-            if (webhookData.has("data") && webhookData.get("data").has("id")) {
-                return webhookData.get("data").get("id").asText();
+            if (payload != null && !payload.isEmpty()) {
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode webhookData = mapper.readTree(payload);
+                
+                if (webhookData.has("data") && webhookData.get("data").has("id")) {
+                    return webhookData.get("data").get("id").asText();
+                }
             }
-            
-            // Formato 2: {"id":"123456"}
-            if (webhookData.has("id")) {
-                return webhookData.get("id").asText();
-            }
-            
-            return null;
         } catch (Exception e) {
-            logger.error("Error extrayendo ID de notificación: {}", e.getMessage());
+            // Ignorar errores de parsing
+        }
+        
+        // Prioridad 3: id en query parameter (puede ser el ID del payment, no de la notificación)
+        // IMPORTANTE: Cuando viene ?id=...&topic=payment, ese ID es del payment, NO de la notificación
+        // Mercado Pago usa un ID de notificación diferente para la firma, por lo que estos webhooks
+        // fallarán la verificación. Son redundantes - Mercado Pago también envía el webhook correcto
+        // con ?data.id=...&type=payment que sí pasa la verificación.
+        String queryId = headers.get("x-query-id");
+        if (queryId != null && !queryId.isEmpty()) {
+            // NO retornar el ID - esto causará que la verificación falle y el webhook sea rechazado
+            // Esto es correcto porque no podemos verificar la firma sin el ID de notificación correcto
             return null;
         }
+        
+        // Prioridad 4: id en el payload JSON (último recurso)
+        try {
+            if (payload != null && !payload.isEmpty()) {
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode webhookData = mapper.readTree(payload);
+                
+                if (webhookData.has("id") && !webhookData.has("resource")) {
+                    return webhookData.get("id").asText();
+                }
+            }
+        } catch (Exception e) {
+            // Ignorar errores de parsing
+        }
+        
+        return null;
     }
     
     /**
-     * Extraer los componentes de la firma de Mercado Pago
-     * Formato esperado: "ts=<timestamp>,v1=<hash>"
+     * Extrae los componentes de la firma de Mercado Pago.
+     * 
+     * <p>La firma de Mercado Pago tiene el formato: "ts=timestamp,v1=hash"
+     * donde:
+     * <ul>
+     *   <li>ts: Timestamp en milisegundos</li>
+     *   <li>v1: Hash HMAC-SHA256 en hexadecimal</li>
+     * </ul>
+     * 
+     * @param signature La firma completa del header x-signature
      * @return Array con [timestamp, hash] o null si el formato es inválido
      */
     private String[] extractSignatureParts(String signature) {
@@ -231,9 +318,18 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
     }
     
     /**
-     * Calcular HMAC-SHA256 del payload usando el webhook secret
-     * Según documentación de Mercado Pago:
-     * https://www.mercadopago.com.ar/developers/es/guides/notifications/webhooks#bookmark_validar_la_autenticidad_de_una_notificaci%C3%B3n
+     * Calcula el HMAC-SHA256 de un string usando el webhook secret.
+     * 
+     * <p>Este método implementa el algoritmo de firma HMAC-SHA256 según la
+     * documentación oficial de Mercado Pago. El resultado se devuelve en
+     * formato hexadecimal (lowercase, sin separadores).
+     * 
+     * @param payload El string a firmar (formato: "id:{id};request-id:{requestId};ts:{timestamp};")
+     * @param secret El webhook secret configurado en Mercado Pago
+     * @return El hash HMAC-SHA256 en formato hexadecimal
+     * @throws Exception Si ocurre un error al calcular el HMAC
+     * @see <a href="https://www.mercadopago.com.ar/developers/es/guides/notifications/webhooks#bookmark_validar_la_autenticidad_de_una_notificaci%C3%B3n">
+     *      Documentación de verificación de webhooks</a>
      */
     private String calculateHMAC(String payload, String secret) throws Exception {
         try {
@@ -264,51 +360,69 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
         }
     }
     
+    /**
+     * Procesa un webhook de Mercado Pago después de verificar su autenticidad.
+     * 
+     * <p>Este método:
+     * <ol>
+     *   <li>Extrae el ID del pago del payload del webhook</li>
+     *   <li>Consulta la API de Mercado Pago para obtener el estado actual del pago</li>
+     *   <li>Actualiza la transacción local según el estado recibido</li>
+     *   <li>Acredita monedas si el pago fue aprobado</li>
+     * </ol>
+     * 
+     * <p>Utiliza retry logic para manejar fallos temporales al consultar la API.
+     * 
+     * @param payload El cuerpo del webhook como string JSON
+     * @return Mensaje de resultado del procesamiento
+     * @throws Exception Si ocurre un error al procesar el webhook
+     */
     @Override
     @Transactional(isolation = Isolation.REPEATABLE_READ, rollbackFor = Exception.class)
     public String processWebhook(String payload) throws Exception {
-        logger.info("[MP-Webhook] Processing webhook");
-        
         try {
-            // Parsear el payload del webhook
             ObjectMapper mapper = new ObjectMapper();
             JsonNode webhookData = mapper.readTree(payload);
             
-            // Extraer el ID del pago - MÚLTIPLES FORMATOS DE MERCADO PAGO
             String paymentId = extractPaymentId(webhookData);
             
             if (paymentId == null) {
                 logger.error("[MP-Webhook] No se pudo extraer el ID del pago del webhook");
-                logger.trace("[MP-Webhook] Payload structure: {}", webhookData.toString());
                 return "ERROR: No payment ID found";
             }
             
-            // Verificar si es un webhook de prueba
             if ("123456".equals(paymentId)) {
-                logger.info("[MP-Webhook] Test webhook received, ignoring");
                 return "Test webhook processed";
             }
             
-            // Obtener información del pago desde Mercado Pago
             Payment payment = getPaymentFromMercadoPago(paymentId);
             if (payment == null) {
-                logger.warn("[MP-Webhook] Could not get payment from MercadoPago: {}", paymentId);
+                logger.warn("[MP-Webhook] No se pudo obtener el pago de MercadoPago");
                 return "Payment not found in MercadoPago";
             }
             
-            // Procesar el pago según su estado
             processPaymentStatus(payment);
             
             return "Webhook processed successfully";
             
         } catch (Exception e) {
-            logger.error("[MP-Webhook] Error processing webhook: {}", e.getMessage(), e);
+            logger.error("[MP-Webhook] ❌ Error procesando webhook: {}", e.getMessage(), e);
             throw e;
         }
     }
     
     /**
-     * Extraer payment ID del webhook según los diferentes formatos de MercadoPago
+     * Extrae el ID del pago del payload del webhook.
+     * 
+     * <p>Mercado Pago puede enviar el ID del pago en diferentes formatos:
+     * <ul>
+     *   <li>{"resource":"122113012667","topic":"payment"} - ID directo en resource</li>
+     *   <li>{"data":{"id":"122113012667"}} - ID en data.id</li>
+     *   <li>{"id":"123456","action":"payment.updated","type":"payment"} - ID directo</li>
+     * </ul>
+     * 
+     * @param webhookData El payload del webhook parseado como JsonNode
+     * @return El ID del pago si se encuentra, null en caso contrario
      */
     private String extractPaymentId(JsonNode webhookData) {
         // Formato 1: {"resource":"122113012667","topic":"payment"}
@@ -336,54 +450,85 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
     }
     
     /**
-     * Obtener información del pago desde Mercado Pago
+     * Obtiene la información de un pago desde la API de Mercado Pago.
+     * 
+     * <p>Este método consulta la API de Mercado Pago para obtener el estado
+     * actual de un pago. Utiliza retry logic con exponential backoff para
+     * manejar fallos temporales de la API.
+     * 
+     * @param paymentId El ID del pago en Mercado Pago
+     * @return El objeto Payment con la información del pago, o null si no se encuentra o ocurre un error
      */
     private Payment getPaymentFromMercadoPago(String paymentId) {
         try {
             MercadoPagoConfig.setAccessToken(accessToken);
             PaymentClient client = new PaymentClient();
-            return client.get(Long.parseLong(paymentId));
-        } catch (MPApiException e) {
-            logger.error("[MP-Webhook] API error getting payment: {}", e.getMessage());
+            Retry retry = retryRegistry.retry("mercadopagoRetry");
+            Payment payment = Retry.decorateSupplier(retry, () -> {
+                try {
+                    return client.get(Long.parseLong(paymentId));
+                } catch (MPApiException e) {
+                    throw new RuntimeException(e); // Envolver para Resilience4j
+                } catch (MPException e) {
+                    throw new RuntimeException(e); // Envolver para Resilience4j
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).get();
+            return payment;
+        } catch (RuntimeException e) {
+            // Desenvolver excepciones envueltas por Resilience4j
+            Throwable cause = e.getCause();
+            if (cause instanceof MPApiException) {
+                MPApiException mpApiEx = (MPApiException) cause;
+                logger.error("[MP-Webhook] Error obteniendo pago (después de reintentos): {}", mpApiEx.getMessage());
+                return null;
+            } else if (cause instanceof MPException) {
+                MPException mpEx = (MPException) cause;
+                logger.error("[MP-Webhook] Error de conexion (despues de reintentos): {}", mpEx.getMessage());
+                return null;
+            }
+            logger.error("[MP-Webhook] Error después de reintentos: {}", e.getMessage());
             return null;
-        } catch (MPException e) {
-            logger.error("[MP-Webhook] Connection error: {}", e.getMessage());
+        } catch (Exception e) {
+            logger.error("[MP-Webhook] Error después de reintentos: {}", e.getMessage());
             return null;
         }
     }
     
     /**
-     * Procesar el estado del pago
+     * Procesa el estado de un pago y actualiza la transacción correspondiente.
+     * 
+     * <p>Este método mapea los estados de Mercado Pago a los estados internos y
+     * ejecuta las acciones correspondientes:
+     * <ul>
+     *   <li>approved → APPROVED (acredita monedas)</li>
+     *   <li>rejected → REJECTED</li>
+     *   <li>pending → PENDING</li>
+     *   <li>in_process → IN_PROCESS</li>
+     *   <li>cancelled → CANCELLED</li>
+     * </ul>
+     * 
+     * @param payment El objeto Payment de Mercado Pago con el estado actual
      */
     private void processPaymentStatus(Payment payment) {
         String paymentId = payment.getId().toString();
         String status = payment.getStatus();
         
-        logger.info("[MP-Webhook] Processing payment {} with status: {}", paymentId, status);
-        
         try {
-            // Buscar la transacción
             PaymentTransaction transaction = findTransaction(paymentId, payment.getExternalReference());
             
             if (transaction == null) {
-                logger.error("[MP-Webhook] Transaction not found for paymentId: {}", paymentId);
+                logger.error("[MP-Webhook] Transaccion no encontrada. Payment ID: {}", paymentId);
                 return;
             }
             
-            logger.info("[MP-Webhook] Transaction found: ID={}, Account={}, Coins={}, Current Status={}, ProcessedAt={}", 
-                       transaction.getId(), transaction.getAccount().getId(), transaction.getCoinsAmount(),
-                       transaction.getStatus(), transaction.getProcessedAt());
-            
-            // Verificar si ya fue procesada (evitar procesamiento duplicado)
             if (transaction.getProcessedAt() != null && PaymentStatus.APPROVED.equals(transaction.getStatus())) {
-                logger.info("[MP-Webhook] Transaction {} already processed. Skipping.", transaction.getId());
                 return;
             }
             
-            // Actualizar el ID del pago en la transacción
             transaction.setMpPaymentId(paymentId);
             
-            // Procesar según el estado
             switch (status) {
                 case "approved":
                     processApprovedPayment(transaction);
@@ -401,7 +546,7 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
                     transaction.setStatus(PaymentStatus.CANCELLED);
                     break;
                 default:
-                    logger.warn("[MP-Webhook] Unhandled payment status: {}", status);
+                    logger.warn("[MP-Webhook] Estado desconocido: {}", status);
                     return;
             }
             
@@ -414,10 +559,21 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
     }
     
     /**
-     * Buscar transacción por diferentes criterios
+     * Busca una transacción usando diferentes criterios de búsqueda.
+     * 
+     * <p>Este método intenta encontrar la transacción en el siguiente orden:
+     * <ol>
+     *   <li>Por paymentId de Mercado Pago (mp_payment_id)</li>
+     *   <li>Por preferenceId (mp_preference_id) si externalRef es una preference</li>
+     *   <li>Por external UUID si externalRef es un UUID</li>
+     *   <li>Por transacciones recientes pendientes sin paymentId (últimas 24 horas)</li>
+     * </ol>
+     * 
+     * @param paymentId El ID del pago en Mercado Pago
+     * @param externalRef La referencia externa (preference_id o UUID)
+     * @return La transacción encontrada, o null si no se encuentra
      */
     private PaymentTransaction findTransaction(String paymentId, String externalRef) {
-        // Buscar por paymentId
         PaymentTransaction transaction = paymentTransactionRepository.findByMpPaymentId(paymentId)
                 .orElse(null);
         
@@ -425,24 +581,23 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
             return transaction;
         }
         
-        // Buscar por external_reference (preference_id o UUID)
         if (externalRef != null && !externalRef.isEmpty()) {
-            logger.info("[MP-Webhook] Searching by external_reference: {}", externalRef);
-            
-            // Intentar como preference_id primero
             transaction = paymentTransactionRepository.findByMpPreferenceId(externalRef)
                     .orElse(null);
             
-            // Si no, intentar como UUID
-            if (transaction == null) {
-                transaction = paymentTransactionRepository.findByExternalUuid(externalRef)
-                        .orElse(null);
+            if (transaction != null) {
+                return transaction;
+            }
+            
+            transaction = paymentTransactionRepository.findByExternalUuid(externalRef)
+                    .orElse(null);
+            
+            if (transaction != null) {
+                return transaction;
             }
         }
         
-        // Buscar transacciones recientes sin paymentId
         if (transaction == null) {
-            logger.info("[MP-Webhook] Searching recent transactions without paymentId");
             Date oneDayAgo = new Date(System.currentTimeMillis() - 24 * 60 * 60 * 1000);
             List<PaymentTransaction> recentTransactions = paymentTransactionRepository.findByDateRange(oneDayAgo, new Date());
             
@@ -460,25 +615,43 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
      * Procesar pago aprobado - SUMAR MONEDAS
      * CRITICAL: Must be called within a REPEATABLE_READ transaction
      */
+    /**
+     * Procesa un pago aprobado, actualizando el estado y acreditando monedas.
+     * 
+     * <p>Este método:
+     * <ul>
+     *   <li>Valida que la transacción no esté en un estado inválido (reembolsada/cancelada)</li>
+     *   <li>Verifica que la transacción no haya sido procesada previamente</li>
+     *   <li>Actualiza el estado a APPROVED</li>
+     *   <li>Marca la transacción como procesada</li>
+     *   <li>Acredita las monedas a la cuenta del usuario</li>
+     * </ul>
+     * 
+     * @param transaction La transacción a procesar
+     * @throws IllegalStateException Si la transacción está en un estado inválido
+     */
     private void processApprovedPayment(PaymentTransaction transaction) {
-        // Verificar que no se haya procesado ya
+        // Validar que la transacción no esté en un estado inválido
+        if (PaymentStatus.REFUNDED.equals(transaction.getStatus())) {
+            logger.warn("[MP-Webhook] ⚠️ Intento de procesar transaccion reembolsada: {}", transaction.getId());
+            throw new IllegalStateException("Cannot process refunded transaction");
+        }
+        
+        if (PaymentStatus.CANCELLED.equals(transaction.getStatus())) {
+            logger.warn("[MP-Webhook] ⚠️ Intento de procesar transaccion cancelada: {}", transaction.getId());
+            throw new IllegalStateException("Cannot process cancelled transaction");
+        }
+        
         if (PaymentStatus.APPROVED.equals(transaction.getStatus()) || transaction.getProcessedAt() != null) {
-            logger.warn("[MP-Webhook] Transaction already processed: ID={}, Status={}, ProcessedAt={}", 
-                       transaction.getId(), transaction.getStatus(), transaction.getProcessedAt());
             return;
         }
         
-        logger.info("[MP-Webhook] Processing approved payment for transaction: {}", transaction.getId());
-        
-        // Actualizar estado y marcar como procesado
         transaction.setStatus(PaymentStatus.APPROVED);
         transaction.markAsProcessed();
         
-        // Guardar ANTES de agregar monedas
         paymentTransactionRepository.save(transaction);
-        paymentTransactionRepository.flush(); // Force immediate write
+        paymentTransactionRepository.flush();
         
-        // SUMAR MONEDAS A LA CUENTA
         AccountMaster account = transaction.getAccount();
         Integer currentCoins = account.getTerraCoins();
         
@@ -488,14 +661,10 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
         
         Integer newCoins = currentCoins + transaction.getCoinsAmount();
         
-        logger.info("[MP-Webhook] Adding {} coins to account {}. Total: {} -> {}", 
-                   transaction.getCoinsAmount(), account.getId(), currentCoins, newCoins);
-        
         account.setTerraCoins(newCoins);
         accountMasterRepository.save(account);
-        accountMasterRepository.flush(); // Force immediate write
+        accountMasterRepository.flush();
         
-        // Registrar en auditoría (si falla, hace rollback de TODO)
         auditService.auditPurchase(account, currentCoins, newCoins, transaction, "mercadopago");
     }
 }

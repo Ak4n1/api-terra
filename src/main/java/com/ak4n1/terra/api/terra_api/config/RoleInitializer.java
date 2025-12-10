@@ -49,7 +49,7 @@ public class RoleInitializer implements CommandLineRunner {
             );
         }
         
-        logger.info("Inicialización de roles completada");
+        logger.info("Inicializacion de roles completada");
     }
 }
 

@@ -2,6 +2,8 @@ package com.ak4n1.terra.api.terra_api.payments.controllers;
 
 import com.ak4n1.terra.api.terra_api.auth.entities.AccountMaster;
 import com.ak4n1.terra.api.terra_api.auth.repositories.AccountMasterRepository;
+import com.ak4n1.terra.api.terra_api.payments.exceptions.PackageNotFoundException;
+import com.ak4n1.terra.api.terra_api.payments.exceptions.PaymentException;
 import com.ak4n1.terra.api.terra_api.payments.dto.CoinPackageResponseDTO;
 import com.ak4n1.terra.api.terra_api.payments.dto.CoinPurchaseRequest;
 import com.ak4n1.terra.api.terra_api.payments.dto.PaymentPreferenceResponse;
@@ -32,8 +34,31 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Controlador para gestión de pagos
- * CORS manejado por SecurityConfig (no usar @CrossOrigin aquí)
+ * Controlador REST para la gestión de pagos y transacciones.
+ * 
+ * <p>Este controlador expone endpoints para:
+ * <ul>
+ *   <li>Consultar paquetes de monedas disponibles</li>
+ *   <li>Crear preferencias de pago (Mercado Pago y PayPal)</li>
+ *   <li>Capturar pagos de PayPal</li>
+ *   <li>Consultar historial de transacciones</li>
+ *   <li>Obtener estadísticas y balance de cuenta</li>
+ *   <li>Reanudar pagos pendientes</li>
+ *   <li>Reembolsar transacciones (administradores)</li>
+ * </ul>
+ * 
+ * <p><b>Seguridad:</b>
+ * <ul>
+ *   <li>Endpoints protegidos requieren autenticación</li>
+ *   <li>Validación de accountId: usuarios solo acceden a sus propios datos</li>
+ *   <li>Rate limiting: máximo 30 intentos de pago por hora</li>
+ *   <li>Límite diario: máximo 20 compras exitosas por día</li>
+ * </ul>
+ * 
+ * <p><b>Nota:</b> CORS manejado por SecurityConfig (no usar @CrossOrigin aquí)
+ * 
+ * @author ak4n1
+ * @since 3.0
  */
 @RestController
 @RequestMapping("/api/payments")
@@ -62,9 +87,21 @@ public class PaymentController {
     @Value("${paypal.webhook.url}")
     private String paypalNotificationUrl;
     
+    @Value("${mercadopago.return.url}")
+    private String paymentReturnUrl;
+    
+    @Value("${mercadopago.cancel.url}")
+    private String paymentCancelUrl;
+    
     /**
-     * Obtener todos los paquetes de monedas activos
-     * @param currency Filtro opcional por moneda (USD, ARS)
+     * Obtiene todos los paquetes de monedas activos.
+     * 
+     * <p>Este endpoint permite filtrar los paquetes por moneda si se proporciona
+     * el parámetro currency. Si no se proporciona, retorna todos los paquetes activos.
+     * 
+     * @param currency Filtro opcional por moneda (USD, ARS). Si es null, retorna todos los paquetes
+     * @param request Objeto HttpServletRequest para obtener información del cliente
+     * @return Lista de paquetes de monedas activos, o lista vacía si no hay paquetes
      */
     @GetMapping("/packages")
     public ResponseEntity<List<CoinPackageResponseDTO>> getAllPackages(
@@ -88,7 +125,12 @@ public class PaymentController {
     }
     
     /**
-     * Obtener métodos de pago disponibles
+     * Obtiene los métodos de pago disponibles en el sistema.
+     * 
+     * <p>Retorna información sobre los proveedores de pago configurados
+     * (Mercado Pago y PayPal) con sus características y tipos de pago soportados.
+     * 
+     * @return Mapa con información de métodos de pago, método por defecto, moneda y país
      */
     @GetMapping("/methods")
     public ResponseEntity<Map<String, Object>> getPaymentMethods() {
@@ -128,7 +170,12 @@ public class PaymentController {
     }
     
     /**
-     * Obtener paquetes populares
+     * Obtiene los paquetes de monedas más populares.
+     * 
+     * <p>Los paquetes populares se determinan según criterios internos del sistema
+     * (por ejemplo, número de compras, orden de visualización, etc.).
+     * 
+     * @return Lista de paquetes populares
      */
     @GetMapping("/packages/popular")
     public ResponseEntity<List<CoinPackageResponseDTO>> getPopularPackages() {
@@ -142,7 +189,10 @@ public class PaymentController {
     }
     
     /**
-     * Obtener un paquete específico por ID
+     * Obtiene un paquete de monedas específico por su ID.
+     * 
+     * @param id El ID del paquete a obtener
+     * @return El paquete de monedas si existe, o 404 si no se encuentra
      */
     @GetMapping("/packages/{id}")
     public ResponseEntity<CoinPackageResponseDTO> getPackageById(@PathVariable Long id) {
@@ -159,15 +209,37 @@ public class PaymentController {
     }
     
     /**
-     * Crear preferencia de pago
-     * RATE LIMIT: Máximo 10 intentos por usuario por hora
+     * Crea una preferencia de pago para un paquete de monedas.
+     * 
+     * <p>Este endpoint crea una preferencia de pago en el proveedor seleccionado
+     * (Mercado Pago o PayPal) y retorna la URL para que el usuario complete el pago.
+     * 
+     * <p><b>Validaciones de seguridad:</b>
+     * <ul>
+     *   <li>Usuario debe estar autenticado</li>
+     *   <li>Email del usuario debe estar verificado</li>
+     *   <li>Paquete debe existir y estar activo</li>
+     *   <li>Precio del paquete debe ser válido (positivo y dentro del rango permitido)</li>
+     *   <li>Rate limit: máximo 30 intentos por hora por usuario</li>
+     *   <li>Límite diario: máximo 20 compras exitosas por día</li>
+     * </ul>
+     * 
+     * <p><b>Proveedores soportados:</b>
+     * <ul>
+     *   <li>mercadopago (o mp)</li>
+     *   <li>paypal (o pp)</li>
+     * </ul>
+     * 
+     * @param request Objeto con los datos de la compra (packageId, accountId, provider)
+     * @param httpRequest Objeto HttpServletRequest para obtener información del cliente
+     * @return Respuesta con el ID de preferencia/orden y URL de pago, o error si falla
      */
     @PostMapping("/create-preference")
     public ResponseEntity<PaymentPreferenceResponse> createPaymentPreference(
             @RequestBody @Valid CoinPurchaseRequest request,
             HttpServletRequest httpRequest) {
         
-        logger.info("🔵 [PAYMENT] Iniciando creación de preferencia de pago");
+        logger.info("🔵 [PAYMENT] Iniciando creacion de preferencia de pago");
         logger.info("🔵 [PAYMENT] Request recibido: packageId={}, accountId={}", 
                    request.getPackageId(), request.getAccountId());
         logger.info("🔵 [PAYMENT] Headers: User-Agent={}, X-Forwarded-For={}", 
@@ -246,10 +318,13 @@ public class PaymentController {
             
             return ResponseEntity.ok(response);
             
+        } catch (IllegalArgumentException | PackageNotFoundException | PaymentException | IllegalStateException | SecurityException e) {
+            // Dejar que PaymentExceptionHandler maneje estas excepciones
+            throw e;
         } catch (Exception e) {
-            logger.error("❌ [PAYMENT] Error al crear preferencia de pago: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new PaymentPreferenceResponse("error", "Error interno del servidor"));
+            logger.error("❌ [PAYMENT] Error inesperado al crear preferencia de pago: {}", e.getMessage(), e);
+            // Dejar que PaymentExceptionHandler maneje excepciones genéricas
+            throw new PaymentException("Unexpected error creating payment preference", e);
         }
     }
     
@@ -356,6 +431,19 @@ public class PaymentController {
     @GetMapping("/stats/{accountId}")
     public ResponseEntity<CoinService.CoinAccountStats> getAccountStats(@PathVariable Long accountId) {
         try {
+            // Validar que el accountId pertenezca al usuario autenticado
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+                AccountMaster account = accountMasterRepository.findByEmail(auth.getName())
+                        .orElseThrow(() -> new RuntimeException("Cuenta no encontrada para el usuario autenticado"));
+                
+                if (!account.getId().equals(accountId)) {
+                    logger.warn("Intento de acceso no autorizado: usuario {} intento acceder a stats de cuenta {}", 
+                              auth.getName(), accountId);
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+                }
+            }
+            
             CoinService.CoinAccountStats stats = paymentService.getAccountPaymentStats(accountId);
             return ResponseEntity.ok(stats);
         } catch (Exception e) {
@@ -370,6 +458,19 @@ public class PaymentController {
     @GetMapping("/balance/{accountId}")
     public ResponseEntity<Map<String, Object>> getAccountBalance(@PathVariable Long accountId) {
         try {
+            // Validar que el accountId pertenezca al usuario autenticado
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+                AccountMaster account = accountMasterRepository.findByEmail(auth.getName())
+                        .orElseThrow(() -> new RuntimeException("Cuenta no encontrada para el usuario autenticado"));
+                
+                if (!account.getId().equals(accountId)) {
+                    logger.warn("Intento de acceso no autorizado: usuario {} intento acceder a balance de cuenta {}", 
+                              auth.getName(), accountId);
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+                }
+            }
+            
             Integer balance = coinService.getAccountCoinsBalance(accountId);
             Map<String, Object> response = new HashMap<>();
             response.put("accountId", accountId);
@@ -393,7 +494,7 @@ public class PaymentController {
             response.put("status", status);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            logger.error("Error al obtener estado de transacción {}: {}", transactionId, e.getMessage(), e);
+            logger.error("Error al obtener estado de transaccion {}: {}", transactionId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
@@ -427,7 +528,7 @@ public class PaymentController {
             response.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
-            logger.error("Error al obtener URL de reanudación para transacción {}: {}", transactionId, e.getMessage(), e);
+            logger.error("Error al obtener URL de reanudacion para transaccion {}: {}", transactionId, e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("status", "error");
             response.put("message", "Error al reanudar el pago. Intente nuevamente.");
@@ -455,7 +556,7 @@ public class PaymentController {
                 return ResponseEntity.badRequest().body(response);
             }
         } catch (Exception e) {
-            logger.error("Error al reembolsar transacción {}: {}", transactionId, e.getMessage(), e);
+            logger.error("Error al reembolsar transaccion {}: {}", transactionId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
@@ -516,16 +617,14 @@ public class PaymentController {
      * Generar URL de retorno exitoso
      */
     private String getReturnUrl(HttpServletRequest request) {
-        // Usar URLs de producción para redirecciones
-        return "https://l2terra.online/payment-success";
+        return paymentReturnUrl;
     }
     
     /**
      * Generar URL de cancelación
      */
     private String getCancelUrl(HttpServletRequest request) {
-        // Usar URLs de producción para redirecciones
-        return "https://l2terra.online/payment-failure";
+        return paymentCancelUrl;
     }
     
     /**

@@ -7,10 +7,14 @@ import com.ak4n1.terra.api.terra_api.payments.dto.CoinPurchaseRequest;
 import com.ak4n1.terra.api.terra_api.payments.dto.PaymentPreferenceResponse;
 import com.ak4n1.terra.api.terra_api.payments.dto.PaymentTransactionDTO;
 import com.ak4n1.terra.api.terra_api.payments.entities.CoinPackage;
+import com.ak4n1.terra.api.terra_api.payments.entities.PaymentStatus;
 import com.ak4n1.terra.api.terra_api.payments.entities.PaymentTransaction;
 import com.ak4n1.terra.api.terra_api.payments.repositories.CoinPackageRepository;
 import com.ak4n1.terra.api.terra_api.payments.repositories.PaymentTransactionRepository;
+import com.ak4n1.terra.api.terra_api.payments.exceptions.PackageNotFoundException;
+import com.ak4n1.terra.api.terra_api.payments.exceptions.PaymentException;
 import com.ak4n1.terra.api.terra_api.payments.factory.PaymentStrategyFactory;
+import com.ak4n1.terra.api.terra_api.payments.strategies.MercadoPagoStrategy;
 import com.ak4n1.terra.api.terra_api.payments.strategies.PaymentStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -35,6 +40,7 @@ import org.hibernate.Hibernate;
 public class PaymentServiceImpl implements PaymentService {
     
     private static final Logger logger = LoggerFactory.getLogger(PaymentServiceImpl.class);
+    private static final BigDecimal MAX_PAYMENT_AMOUNT = new BigDecimal("1000000.00");
     
     @Autowired
     private CoinPackageRepository coinPackageRepository;
@@ -60,7 +66,7 @@ public class PaymentServiceImpl implements PaymentService {
                     .collect(Collectors.toList());
         } catch (Exception e) {
             logger.error("Error al obtener paquetes activos: {}", e.getMessage(), e);
-            return List.of();
+            throw new PaymentException("Failed to retrieve active packages", e);
         }
     }
     
@@ -70,8 +76,7 @@ public class PaymentServiceImpl implements PaymentService {
             // Validate currency
             List<String> ALLOWED_CURRENCIES = List.of("USD", "ARS");
             if (!ALLOWED_CURRENCIES.contains(currency.toUpperCase())) {
-                logger.warn("Invalid currency requested: {}", currency);
-                return List.of();
+                throw new IllegalArgumentException("Invalid currency: " + currency);
             }
             
             List<CoinPackage> packages = coinPackageRepository.findByActiveTrueAndCurrencyOrderBySortOrderAsc(currency.toUpperCase());
@@ -79,9 +84,11 @@ public class PaymentServiceImpl implements PaymentService {
             return packages.stream()
                     .map(CoinPackageResponseDTO::new)
                     .collect(Collectors.toList());
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             logger.error("Error al obtener paquetes activos por moneda {}: {}", currency, e.getMessage(), e);
-            return List.of();
+            throw new PaymentException("Failed to retrieve packages for currency: " + currency, e);
         }
     }
     
@@ -90,14 +97,15 @@ public class PaymentServiceImpl implements PaymentService {
         try {
             Optional<CoinPackage> packageOpt = coinPackageRepository.findByIdAndActiveTrue(packageId);
             if (packageOpt.isEmpty()) {
-                logger.warn("Paquete no encontrado o inactivo: {}", packageId);
-                return null;
+                throw new PackageNotFoundException("Package not found or inactive: " + packageId);
             }
             
             return new CoinPackageResponseDTO(packageOpt.get());
+        } catch (PackageNotFoundException e) {
+            throw e;
         } catch (Exception e) {
             logger.error("Error al obtener paquete por ID {}: {}", packageId, e.getMessage(), e);
-            return null;
+            throw new PaymentException("Failed to retrieve package: " + packageId, e);
         }
     }
     
@@ -110,7 +118,7 @@ public class PaymentServiceImpl implements PaymentService {
                     .collect(Collectors.toList());
         } catch (Exception e) {
             logger.error("Error al obtener paquetes populares: {}", e.getMessage(), e);
-            return List.of();
+            throw new PaymentException("Failed to retrieve popular packages", e);
         }
     }
     
@@ -132,15 +140,13 @@ public class PaymentServiceImpl implements PaymentService {
             // Validar que el paquete existe y está activo
             Optional<CoinPackage> packageOpt = coinPackageRepository.findByIdAndActiveTrue(request.getPackageId());
             if (packageOpt.isEmpty()) {
-                logger.error("Paquete no encontrado o inactivo: {}", request.getPackageId());
-                return new PaymentPreferenceResponse("error", "Paquete no encontrado");
+                throw new PackageNotFoundException("Package not found or inactive: " + request.getPackageId());
             }
             
             // Validar que la cuenta existe
             Optional<AccountMaster> accountOpt = accountMasterRepository.findById(request.getAccountId());
             if (accountOpt.isEmpty()) {
-                logger.error("Cuenta no encontrada: {}", request.getAccountId());
-                return new PaymentPreferenceResponse("error", "Cuenta no encontrada");
+                throw new IllegalArgumentException("Account not found: " + request.getAccountId());
             }
             
             CoinPackage coinPackage = packageOpt.get();
@@ -150,6 +156,14 @@ public class PaymentServiceImpl implements PaymentService {
             if (!account.isEmailVerified()) {
                 logger.error("Email not verified for account: {}", account.getId());
                 return new PaymentPreferenceResponse("error", "Email verification required to make purchases");
+            }
+            
+            // SECURITY: Validar que el precio del paquete sea válido
+            BigDecimal packagePrice = coinPackage.getPrice();
+            if (packagePrice.compareTo(BigDecimal.ZERO) <= 0 || packagePrice.compareTo(MAX_PAYMENT_AMOUNT) > 0) {
+                logger.error("Invalid payment amount detected! Package ID: {}, Amount: {}", 
+                           coinPackage.getId(), packagePrice);
+                throw new IllegalArgumentException("Invalid payment amount");
             }
             
             // Crear transacción pendiente
@@ -186,12 +200,11 @@ public class PaymentServiceImpl implements PaymentService {
             logger.info("[Payment] Payment preference created successfully");
             return preference;
             
-        } catch (IllegalArgumentException e) {
-            logger.error("Proveedor de pago no soportado: {}", e.getMessage());
-            return new PaymentPreferenceResponse("error", "Proveedor de pago no soportado");
+        } catch (IllegalArgumentException | PackageNotFoundException | IllegalStateException | SecurityException e) {
+            throw e; // Re-throw para que PaymentExceptionHandler lo maneje
         } catch (Exception e) {
             logger.error("Error al crear preferencia de pago: {}", e.getMessage(), e);
-            return new PaymentPreferenceResponse("error", "Error interno del servidor: " + e.getMessage());
+            throw new PaymentException("Failed to create payment preference", e);
         }
     }
     
@@ -214,8 +227,7 @@ public class PaymentServiceImpl implements PaymentService {
         try {
             Optional<AccountMaster> accountOpt = accountMasterRepository.findById(accountId);
             if (accountOpt.isEmpty()) {
-                logger.warn("Account not found for ID: {}", accountId);
-                return List.of();
+                throw new IllegalArgumentException("Account not found: " + accountId);
             }
             
             // JOIN FETCH carga las relaciones lazy dentro de la transacción
@@ -235,9 +247,11 @@ public class PaymentServiceImpl implements PaymentService {
                     .filter(dto -> dto != null)
                     .collect(Collectors.toList());
             
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             logger.error("Error al obtener historial de transacciones de la cuenta {}: {}", accountId, e.getMessage(), e);
-            return List.of();
+            throw new PaymentException("Failed to retrieve transaction history for account: " + accountId, e);
         }
     }
     
@@ -247,8 +261,7 @@ public class PaymentServiceImpl implements PaymentService {
         try {
             Optional<AccountMaster> accountOpt = accountMasterRepository.findById(accountId);
             if (accountOpt.isEmpty()) {
-                logger.warn("Account not found for ID: {}", accountId);
-                return Page.empty();
+                throw new IllegalArgumentException("Account not found: " + accountId);
             }
 
             Pageable pageable = PageRequest.of(page, size);
@@ -271,9 +284,11 @@ public class PaymentServiceImpl implements PaymentService {
 
             return new PageImpl<>(dtos, pageable, transactionPage.getTotalElements());
 
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             logger.error("Error al obtener historial paginado de transacciones de la cuenta {}: {}", accountId, e.getMessage(), e);
-            return Page.empty();
+            throw new PaymentException("Failed to retrieve paginated transaction history for account: " + accountId, e);
         }
     }
     
@@ -293,7 +308,7 @@ public class PaymentServiceImpl implements PaymentService {
             return transactionOpt.get().getStatus().name();
             
         } catch (Exception e) {
-            logger.error("Error al obtener estado de transacción {}: {}", transactionId, e.getMessage(), e);
+            logger.error("Error al obtener estado de transaccion {}: {}", transactionId, e.getMessage(), e);
             return "ERROR";
         }
     }
@@ -303,7 +318,7 @@ public class PaymentServiceImpl implements PaymentService {
         try {
             Optional<PaymentTransaction> transactionOpt = paymentTransactionRepository.findById(transactionId);
             if (transactionOpt.isEmpty()) {
-                logger.error("Transacción no encontrada: {}", transactionId);
+                logger.error("Transaccion no encontrada: {}", transactionId);
                 return false;
             }
             
@@ -311,7 +326,7 @@ public class PaymentServiceImpl implements PaymentService {
             
             // Verificar que la transacción esté aprobada
             if (!transaction.isApproved()) {
-                logger.warn("No se puede reembolsar una transacción no aprobada: {}", transactionId);
+                logger.warn("No se puede reembolsar una transaccion no aprobada: {}", transactionId);
                 return false;
             }
             
@@ -349,12 +364,12 @@ public class PaymentServiceImpl implements PaymentService {
                 
                 return true;
             } else {
-                logger.error("Error al procesar reembolso. Transacción: {}", transactionId);
+                logger.error("Error al procesar reembolso. Transaccion: {}", transactionId);
                 return false;
             }
             
         } catch (Exception e) {
-            logger.error("Error al reembolsar transacción {}: {}", transactionId, e.getMessage(), e);
+            logger.error("Error al reembolsar transaccion {}: {}", transactionId, e.getMessage(), e);
             return false;
         }
     }
@@ -389,6 +404,31 @@ public class PaymentServiceImpl implements PaymentService {
                     throw new IllegalArgumentException("MercadoPago preference ID not found for this transaction");
                 }
                 
+                // CRITICAL: Verificar el estado real en Mercado Pago antes de generar la URL
+                // Esto previene que se genere una URL para una transacción ya pagada
+                try {
+                    PaymentStrategy strategy = paymentStrategyFactory.getPaymentStrategy(provider);
+                    if (strategy instanceof MercadoPagoStrategy) {
+                        MercadoPagoStrategy mpStrategy = (MercadoPagoStrategy) strategy;
+                        
+                        // Buscar si hay un paymentId asociado a esta transacción
+                        String paymentId = transaction.getMpPaymentId();
+                        if (paymentId != null && !paymentId.isEmpty()) {
+                            // Si hay paymentId, verificar el estado del pago en Mercado Pago
+                            PaymentTransaction updatedTransaction = mpStrategy.capturePayment(paymentId);
+                            
+                            // Si el pago ya fue aprobado, no permitir reanudar
+                            if (updatedTransaction.getStatus() == PaymentStatus.APPROVED) {
+                                throw new IllegalArgumentException("This payment has already been completed. Please refresh the page.");
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    // Si falla la verificación, loguear pero continuar (puede ser un error temporal)
+                    logger.warn("Could not verify payment status in Mercado Pago for transaction {}: {}", transactionId, e.getMessage());
+                    // Continuar con la generación de URL (mejor intentar que bloquear)
+                }
+                
                 // Construir URL de MercadoPago
                 // El dominio depende del país, pero podemos usar el genérico o construir según preferencia
                 // Para simplificar, usamos el dominio genérico que funciona para todos los países
@@ -407,7 +447,7 @@ public class PaymentServiceImpl implements PaymentService {
         } catch (IllegalArgumentException e) {
             throw e; // Re-throw para que el controller maneje el error apropiadamente
         } catch (Exception e) {
-            logger.error("Error al generar URL de reanudación para transacción {}: {}", transactionId, e.getMessage(), e);
+            logger.error("Error al generar URL de reanudacion para transaccion {}: {}", transactionId, e.getMessage(), e);
             throw new RuntimeException("Error generating resume payment URL: " + e.getMessage());
         }
     }
