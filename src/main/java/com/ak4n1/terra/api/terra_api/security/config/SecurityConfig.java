@@ -152,6 +152,11 @@ public class SecurityConfig {
                         // ENDPOINTS USER (Requieren autenticación)
                         // ========================================
                         
+                        // WebSocket endpoint - Se permite el handshake inicial (upgrade HTTP)
+                        // pero la autenticación se valida en WebSocketHandshakeInterceptor
+                        // Si no hay token válido, el interceptor rechaza el handshake
+                        .requestMatchers("/api/notifications/ws").permitAll()
+                        
                         // USER - GET
                         .requestMatchers(HttpMethod.GET,
                                 "/api/auth/me",
@@ -176,7 +181,10 @@ public class SecurityConfig {
                                 "/api/withdrawal-permissions",
                                 "/api/news/latest",
                                 "/api/news",
-                                "/api/news/**"
+                                "/api/news/**",
+                                "/api/notifications/unread",
+                                "/api/notifications/unread/count",
+                                "/api/notifications/export"
                         ).hasRole("USER")
                         
                         // USER - POST
@@ -197,12 +205,22 @@ public class SecurityConfig {
                                 "/api/streamer-applications",
                                 "/api/withdrawal/generate-code",
                                 "/api/withdrawal-permissions/grant",
-                                "/api/withdrawal-permissions/revoke"
+                                "/api/withdrawal-permissions/revoke",
+                                "/api/notifications/*/read",
+                                "/api/notifications/read-all"
+                        ).hasRole("USER")
+                        
+                        // USER - DELETE
+                        .requestMatchers(HttpMethod.DELETE,
+                                "/api/notifications/all"
                         ).hasRole("USER")
                         
                         // ========================================
                         // ENDPOINTS ADMIN (Requieren rol ADMIN)
                         // ========================================
+                        
+                        // Actuator endpoints - Solo ADMIN
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
                         
                         // ADMIN - GET
                         .requestMatchers(HttpMethod.GET,
@@ -218,7 +236,9 @@ public class SecurityConfig {
                                 "/api/news/*/unpublish",
                                 "/api/payments/admin/**",
                                 "/api/payments/transaction/*/refund",
-                                "/api/game/catalog/items/admin/**"
+                                "/api/game/catalog/items/admin/**",
+                                "/api/notifications/admin/create",
+                                "/api/notifications/admin/create-broadcast"
                         ).hasRole("ADMIN")
                         
                         // ADMIN - PUT

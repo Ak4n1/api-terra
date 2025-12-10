@@ -6,6 +6,7 @@ import com.ak4n1.terra.api.terra_api.payments.entities.PaymentStatus;
 import com.ak4n1.terra.api.terra_api.payments.entities.PaymentTransaction;
 import com.ak4n1.terra.api.terra_api.payments.repositories.PaymentTransactionRepository;
 import com.ak4n1.terra.api.terra_api.payments.services.PaymentAuditService;
+import com.ak4n1.terra.api.terra_api.payments.services.CoinService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mercadopago.MercadoPagoConfig;
@@ -86,6 +87,9 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
     
     @Autowired
     private RetryRegistry retryRegistry;
+    
+    @Autowired
+    private CoinService coinService;
     
     /**
      * Obtiene el nombre del proveedor de webhook.
@@ -652,20 +656,20 @@ public class MercadoPagoWebhookStrategy implements WebhookStrategy {
         paymentTransactionRepository.save(transaction);
         paymentTransactionRepository.flush();
         
+        // Usar CoinService para agregar monedas (esto enviará la notificación automáticamente)
         AccountMaster account = transaction.getAccount();
-        Integer currentCoins = account.getTerraCoins();
-        
-        if (currentCoins == null) {
-            currentCoins = 0;
+        if (account == null) {
+            logger.error("[MP-Webhook] Account is null for transaction: {}", transaction.getId());
+            return;
         }
         
-        Integer newCoins = currentCoins + transaction.getCoinsAmount();
+        if (transaction.getCoinPackage() == null || transaction.getCoinPackage().getId() == null) {
+            logger.error("[MP-Webhook] CoinPackage is null for transaction: {}", transaction.getId());
+            return;
+        }
         
-        account.setTerraCoins(newCoins);
-        accountMasterRepository.save(account);
-        accountMasterRepository.flush();
-        
-        auditService.auditPurchase(account, currentCoins, newCoins, transaction, "mercadopago");
+        // Usar CoinService que maneja notificaciones
+        coinService.addCoinsToAccount(account.getId(), transaction.getCoinPackage().getId(), transaction);
     }
 }
 

@@ -14,6 +14,10 @@ import com.ak4n1.terra.api.terra_api.payments.repositories.PaymentTransactionRep
 import com.ak4n1.terra.api.terra_api.payments.exceptions.PackageNotFoundException;
 import com.ak4n1.terra.api.terra_api.payments.exceptions.PaymentException;
 import com.ak4n1.terra.api.terra_api.payments.factory.PaymentStrategyFactory;
+import com.ak4n1.terra.api.terra_api.notifications.domain.NotificationType;
+import com.ak4n1.terra.api.terra_api.notifications.dto.NotificationCreateRequest;
+import com.ak4n1.terra.api.terra_api.notifications.service.NotificationSender;
+import com.ak4n1.terra.api.terra_api.notifications.service.NotificationService;
 import com.ak4n1.terra.api.terra_api.payments.strategies.MercadoPagoStrategy;
 import com.ak4n1.terra.api.terra_api.payments.strategies.PaymentStrategy;
 import org.slf4j.Logger;
@@ -27,7 +31,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.hibernate.Hibernate;
@@ -37,7 +43,7 @@ import org.hibernate.Hibernate;
  */
 @Service
 @Transactional
-public class PaymentServiceImpl implements PaymentService {
+public class PaymentServiceImpl implements PaymentService, NotificationSender {
     
     private static final Logger logger = LoggerFactory.getLogger(PaymentServiceImpl.class);
     private static final BigDecimal MAX_PAYMENT_AMOUNT = new BigDecimal("1000000.00");
@@ -56,6 +62,9 @@ public class PaymentServiceImpl implements PaymentService {
     
     @Autowired
     private CoinService coinService;
+    
+    @Autowired(required = false)
+    private NotificationService notificationService;
     
     @Override
     public List<CoinPackageResponseDTO> getAllActivePackages() {
@@ -449,6 +458,65 @@ public class PaymentServiceImpl implements PaymentService {
         } catch (Exception e) {
             logger.error("Error al generar URL de reanudacion para transaccion {}: {}", transactionId, e.getMessage(), e);
             throw new RuntimeException("Error generating resume payment URL: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Envía una notificación de pago exitoso al usuario.
+     * Este método puede ser llamado desde CoinServiceImpl después de agregar las monedas.
+     * 
+     * @param account la cuenta del usuario
+     * @param transaction la transacción de pago
+     * @param coinPackage el paquete comprado
+     * @param totalCoins el total de monedas agregadas
+     */
+    public void sendPaymentSuccessNotification(AccountMaster account, PaymentTransaction transaction, 
+                                              CoinPackage coinPackage, int totalCoins) {
+        if (notificationService == null) {
+            logger.debug("NotificationService not available, skipping notification");
+            return;
+        }
+        
+        try {
+            // Crear metadata de la notificación
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("payment_id", transaction.getExternalUuid());
+            metadata.put("amount", transaction.getAmount().doubleValue());
+            metadata.put("currency", coinPackage.getCurrency());
+            metadata.put("provider", transaction.getProvider() != null ? transaction.getProvider().toUpperCase() : "UNKNOWN");
+            metadata.put("package_name", coinPackage.getName());
+            metadata.put("terra_coins_added", totalCoins);
+            metadata.put("base_coins", coinPackage.getCoinsAmount());
+            metadata.put("bonus_coins", coinPackage.getBonusCoins());
+            metadata.put("transaction_id", transaction.getId().toString());
+            
+            // Agregar IDs específicos del proveedor
+            if (transaction.getMpPaymentId() != null) {
+                metadata.put("mp_payment_id", transaction.getMpPaymentId());
+            }
+            if (transaction.getPaypalOrderId() != null) {
+                metadata.put("paypal_order_id", transaction.getPaypalOrderId());
+            }
+            
+            // Crear request de notificación
+            NotificationCreateRequest notificationRequest = new NotificationCreateRequest();
+            notificationRequest.setUserEmail(account.getEmail());
+            notificationRequest.setType(NotificationType.PAYMENT_SUCCESS);
+            notificationRequest.setTitle("Payment Successful");
+            notificationRequest.setMessage(
+                String.format("Your purchase of %s was processed successfully. %d Terra Coins have been added to your account.",
+                            coinPackage.getName(), totalCoins)
+            );
+            notificationRequest.setMetadata(metadata);
+            
+            // Enviar notificación (PaymentServiceImpl implementa NotificationSender)
+            notificationService.sendNotification(this, notificationRequest);
+            
+            logger.info("Payment success notification sent to user: {}", account.getEmail());
+            
+        } catch (Exception e) {
+            logger.error("Error sending payment success notification: {}", e.getMessage(), e);
+            // No fallar el flujo principal si la notificación falla
         }
     }
 }

@@ -66,7 +66,8 @@ public class JwtValidationFilter extends BasicAuthenticationFilter {
             "/api/stats",
             "/api/payments/webhook",
             "/api/payments/webhook/**",
-            "/api/webhooks"
+            "/api/webhooks",
+            "/api/notifications/ws" // WebSocket endpoint - autenticación manejada por WebSocketHandshakeInterceptor
 
 
     );

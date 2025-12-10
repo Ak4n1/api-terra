@@ -37,6 +37,10 @@ public class CoinServiceImpl implements CoinService {
     @Autowired
     private PaymentAuditService auditService;
     
+    @Autowired(required = false)
+    @org.springframework.context.annotation.Lazy
+    private PaymentServiceImpl paymentService;
+    
     @Override
     public void addCoinsToAccount(Long accountId, Long packageId, PaymentTransaction transaction) {
         try {
@@ -77,9 +81,36 @@ public class CoinServiceImpl implements CoinService {
             
             paymentTransactionRepository.save(transaction);
             
+            // Enviar notificación de pago exitoso
+            sendPaymentSuccessNotification(account, transaction, coinPackage, totalCoins);
+            
         } catch (Exception e) {
             logger.error("Error al agregar monedas a la cuenta {}: {}", accountId, e.getMessage(), e);
             throw new RuntimeException("Error al procesar el pago", e);
+        }
+    }
+    
+    /**
+     * Envía una notificación de pago exitoso al usuario.
+     * 
+     * @param account la cuenta del usuario
+     * @param transaction la transacción de pago
+     * @param coinPackage el paquete comprado
+     * @param totalCoins el total de monedas agregadas
+     */
+    private void sendPaymentSuccessNotification(AccountMaster account, PaymentTransaction transaction, 
+                                               CoinPackage coinPackage, int totalCoins) {
+        if (paymentService == null) {
+            logger.debug("PaymentService not available, skipping notification");
+            return;
+        }
+        
+        try {
+            // Delegar a PaymentServiceImpl que implementa NotificationSender
+            paymentService.sendPaymentSuccessNotification(account, transaction, coinPackage, totalCoins);
+        } catch (Exception e) {
+            logger.error("Error sending payment success notification: {}", e.getMessage(), e);
+            // No fallar el flujo principal si la notificación falla
         }
     }
     

@@ -8,6 +8,7 @@ import com.ak4n1.terra.api.terra_api.payments.entities.PaymentStatus;
 import com.ak4n1.terra.api.terra_api.payments.entities.PaymentTransaction;
 import com.ak4n1.terra.api.terra_api.payments.repositories.PaymentTransactionRepository;
 import com.ak4n1.terra.api.terra_api.payments.services.PaymentAuditService;
+import com.ak4n1.terra.api.terra_api.payments.services.CoinService;
 import com.paypal.core.PayPalEnvironment;
 import com.paypal.core.PayPalHttpClient;
 import io.github.resilience4j.retry.Retry;
@@ -76,6 +77,9 @@ public class PayPalStrategy implements PaymentStrategy {
     
     @Autowired
     private RetryRegistry retryRegistry;
+    
+    @Autowired
+    private CoinService coinService;
     
     private PayPalHttpClient client;
     
@@ -502,25 +506,23 @@ public class PayPalStrategy implements PaymentStrategy {
      */
     @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     private void addCoinsToAccount(PaymentTransaction transaction) {
+        // Usar CoinService para agregar monedas (esto enviará la notificación automáticamente)
         AccountMaster account = transaction.getAccount();
-        Integer currentCoins = account.getTerraCoins();
-        
-        if (currentCoins == null) {
-            currentCoins = 0;
+        if (account == null) {
+            logger.error("[PayPal] Account is null for transaction: {}", transaction.getId());
+            return;
         }
         
-        Integer newCoins = currentCoins + transaction.getCoinsAmount();
+        if (transaction.getCoinPackage() == null || transaction.getCoinPackage().getId() == null) {
+            logger.error("[PayPal] CoinPackage is null for transaction: {}", transaction.getId());
+            return;
+        }
         
-        logger.info("[PayPal] Adding {} coins to account {}. Total: {} -> {}", 
-                   transaction.getCoinsAmount(), account.getId(), currentCoins, newCoins);
+        logger.info("[PayPal] Adding {} coins to account {} using CoinService", 
+                   transaction.getCoinsAmount(), account.getId());
         
-        // Actualizar saldo
-        account.setTerraCoins(newCoins);
-        accountMasterRepository.save(account);
-        accountMasterRepository.flush(); // Force immediate write
-        
-        // Registrar en auditoría (si falla, hace rollback de TODO)
-        auditService.auditPurchase(account, currentCoins, newCoins, transaction, "paypal");
+        // Usar CoinService que maneja notificaciones
+        coinService.addCoinsToAccount(account.getId(), transaction.getCoinPackage().getId(), transaction);
     }
     
 }

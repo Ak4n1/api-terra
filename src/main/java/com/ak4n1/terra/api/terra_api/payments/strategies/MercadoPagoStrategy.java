@@ -8,6 +8,7 @@ import com.ak4n1.terra.api.terra_api.payments.entities.PaymentStatus;
 import com.ak4n1.terra.api.terra_api.payments.entities.PaymentTransaction;
 import com.ak4n1.terra.api.terra_api.payments.repositories.PaymentTransactionRepository;
 import com.ak4n1.terra.api.terra_api.payments.services.PaymentAuditService;
+import com.ak4n1.terra.api.terra_api.payments.services.CoinService;
 import com.mercadopago.MercadoPagoConfig;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryRegistry;
@@ -74,6 +75,9 @@ public class MercadoPagoStrategy implements PaymentStrategy {
     
     @Autowired
     private RetryRegistry retryRegistry;
+    
+    @Autowired
+    private CoinService coinService;
     
     /**
      * Obtiene el nombre del proveedor de pago.
@@ -402,25 +406,23 @@ public class MercadoPagoStrategy implements PaymentStrategy {
      */
     @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     private void addCoinsToAccount(PaymentTransaction transaction) {
+        // Usar CoinService para agregar monedas (esto enviará la notificación automáticamente)
         AccountMaster account = transaction.getAccount();
-        Integer currentCoins = account.getTerraCoins();
-        
-        if (currentCoins == null) {
-            currentCoins = 0;
+        if (account == null) {
+            logger.error("[MP] Account is null for transaction: {}", transaction.getId());
+            return;
         }
         
-        Integer newCoins = currentCoins + transaction.getCoinsAmount();
+        if (transaction.getCoinPackage() == null || transaction.getCoinPackage().getId() == null) {
+            logger.error("[MP] CoinPackage is null for transaction: {}", transaction.getId());
+            return;
+        }
         
-        logger.info("[MP] Agregando {} monedas a cuenta {}. Total: {} -> {}", 
-                   transaction.getCoinsAmount(), account.getId(), currentCoins, newCoins);
+        logger.info("[MP] Agregando {} monedas a cuenta {} usando CoinService", 
+                   transaction.getCoinsAmount(), account.getId());
         
-        // Actualizar saldo
-        account.setTerraCoins(newCoins);
-        accountMasterRepository.save(account);
-        accountMasterRepository.flush(); // Force immediate write
-        
-        // Registrar en auditoría (si falla, hace rollback de TODO)
-        auditService.auditPurchase(account, currentCoins, newCoins, transaction, "mercadopago");
+        // Usar CoinService que maneja notificaciones
+        coinService.addCoinsToAccount(account.getId(), transaction.getCoinPackage().getId(), transaction);
     }
 }
 

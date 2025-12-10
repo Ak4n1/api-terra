@@ -47,4 +47,11 @@ public interface AccountMasterRepository extends JpaRepository<AccountMaster, Lo
      */
     Optional<AccountMaster> findByPasswordResetToken(String tokenUser);
 
+    /**
+     * Busca todos los usuarios activos (habilitados y con email verificado).
+     * 
+     * @return Lista de usuarios activos
+     */
+    java.util.List<AccountMaster> findByEnabledTrueAndEmailVerifiedTrue();
+
 }
