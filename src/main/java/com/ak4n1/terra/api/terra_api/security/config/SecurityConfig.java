@@ -278,7 +278,8 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(
                 "file://" ,//Electron
                 "https://l2terra.online",
-                "http://localhost:4200"
+                "http://localhost:4200",
+                "http://192.168.1.182:4200"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

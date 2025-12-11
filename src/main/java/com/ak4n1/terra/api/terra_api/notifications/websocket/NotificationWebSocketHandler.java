@@ -100,6 +100,9 @@ public class NotificationWebSocketHandler extends TextWebSocketHandler {
             tokensBySession.put(sessionId, token);
         }
 
+        // Incrementar contador de conexiones activas SOLO cuando la conexión se establece realmente
+        securityValidator.incrementActiveConnections(userEmail);
+
         logger.info("✅ [WebSocket] Connection registered - sessionId: {}, user: {}, totalActiveSessions: {}, userSessions: {}", 
                 sessionId, userEmail, activeSessions.size(), sessionsByUser.get(userEmail).size());
         

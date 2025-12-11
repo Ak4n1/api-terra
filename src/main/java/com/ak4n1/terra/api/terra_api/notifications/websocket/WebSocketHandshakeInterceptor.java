@@ -153,8 +153,8 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
         attributes.put("userId", user.getId());
         attributes.put("token", token);
 
-        // 8. Incrementar contador de conexiones activas
-        securityValidator.incrementActiveConnections(user.getEmail());
+        // NOTA: El incremento del contador de conexiones activas se hace en afterConnectionEstablished
+        // para evitar conexiones "fantasma" si la conexión falla antes de establecerse
 
         logger.info("✅ [WebSocket] Handshake ACCEPTED for user: {} (session: {})", user.getEmail(), session.getSessionId());
         return true;
@@ -165,6 +165,8 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
                               WebSocketHandler wsHandler, Exception exception) {
         if (exception != null) {
             logger.error("Error during WebSocket handshake: {}", exception.getMessage(), exception);
+            // Si el handshake falla después de aceptarlo, no hay nada que limpiar
+            // porque el contador se incrementa solo cuando la conexión se establece realmente
         }
     }
 
